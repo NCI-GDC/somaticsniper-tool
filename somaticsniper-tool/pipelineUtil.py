@@ -4,6 +4,19 @@ import subprocess
 import logging
 import time
 import shutil
+import postgres
+
+
+def add_to_db(config,tool, uuid, line):
+    """ add information to database """
+
+    line = line.split()
+    user = line[3].replace("user", "")
+    system = line[4].replace("system", "")
+    elapsed = line[5].replace("elapsed", "")
+    cpu = line[6].replace("%CPU", "")
+    mem = line[8].replace("maxresident)k", "")
+    postgres.add_metrics(config, tool,  uuid, system, user, elapsed, cpu, mem)
 
 def retrieve_data(analysis_id, cghub_key, output_dir, logger=None):
     if not os.path.isdir(os.path.join(output_dir, analysis_id)):

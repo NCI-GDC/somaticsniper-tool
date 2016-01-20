@@ -13,7 +13,7 @@ if __name__=="__main__":
     required.add_argument("--normal", default=None, help="path to normal bam file", required=True)
     required.add_argument("--tumor", default=None, help="path to tumor bam file", required=True)
     required.add_argument("--snp", default=None, help="path to output snp file", required=True)
-
+    required.add_argument("--config", default=None, help="path to config file for db", required=True)
 
     optional = parser.add_argument_group("optional input parameters")
     optional.add_argument("--uuid", default="unknown", help="unique identifier")
@@ -59,4 +59,11 @@ if __name__=="__main__":
     else:
         raise Exception("Somatic sniper exited with a non-zero exitcode: %s" %exit_code)
 
+    #add metrics information to postgres database.
+    s = open(args.config, 'r').read()
+    config = eval(s)
 
+    log = open(log_file, "r")
+    for line in log:
+        if("user" in line and "elapsed" in line and "maxresident" in line):
+            pipelineUtil.add_to_db(config, "somatic-sniper", args.uuid, line)
