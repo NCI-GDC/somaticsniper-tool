@@ -1,7 +1,7 @@
 import pipelineUtil
 import os
 
-def run_somaticsniper(args, ref, tumor, normal, snp, logger):
+def run_somaticsniper(config, args, ref, tumor, normal, snp, logger):
     """ Run SomaticSniper on a pair of tumor and normal BAM """
 
     logger.info("Starting run for somatic-sniper")
@@ -25,7 +25,7 @@ def run_somaticsniper(args, ref, tumor, normal, snp, logger):
     cmd += ['-f', ref, tumor, normal, snp]
 
     print cmd
-    exit_code = pipelineUtil.log_function_time('somaticsniper', args.uuid, cmd, logger)
+    exit_code = pipelineUtil.log_function_time(config, 'somaticsniper', args.uuid, cmd, logger)
 
     return exit_code
 

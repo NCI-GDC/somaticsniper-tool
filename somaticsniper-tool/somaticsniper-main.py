@@ -35,7 +35,6 @@ if __name__=="__main__":
     sniper.add_argument("-F", default="vcf", help="select output format: classic/vcf/bed")
 
     args = parser.parse_args()
-
     if not os.path.isfile(args.ref):
         raise Exception("Could not find reference file %s, please check that the file exists and the path is correct" %args.ref)
 
@@ -52,7 +51,10 @@ if __name__=="__main__":
     log_file = "%s.somaticsniper.log" %(os.path.join(args.outdir, args.uuid))
     logger = setupLog.setup_logging(logging.INFO, args.uuid, log_file)
 
-    exit_code = somaticsniper.run_somaticsniper(args, args.ref, args.tumor, args.normal, args.snp, logger)
+    s = open(args.config, 'r').read()
+    config = eval(s)
+
+    exit_code = somaticsniper.run_somaticsniper(config, args, args.ref, args.tumor, args.normal, args.snp, logger)
 
     if not exit_code:
         logger.info("somatic-sniper completed successfully")
@@ -60,10 +62,3 @@ if __name__=="__main__":
         raise Exception("Somatic sniper exited with a non-zero exitcode: %s" %exit_code)
 
     #add metrics information to postgres database.
-    s = open(args.config, 'r').read()
-    config = eval(s)
-
-    log = open(log_file, "r")
-    for line in log:
-        if("user" in line and "elapsed" in line and "maxresident" in line):
-            pipelineUtil.add_to_db(config, "somatic-sniper", args.uuid, line)
