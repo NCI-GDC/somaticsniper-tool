@@ -6,14 +6,16 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy import exc
 from sqlalchemy.dialects.postgresql import ARRAY
+from contextlib import contextmanager
 
 Base = declarative_base()
 
 class ToolTypeMixin(object):
+    """ Gather the timing metrics for different datasets """
 
     id = Column(Integer, primary_key=True)
-    #case_id = Column(String)
-    #tool = Column(String)
+    case_id = Column(String)
+    tool = Column(String)
     files = Column(ARRAY(String))
     systime = Column(Float)
     usertime = Column(Float)
@@ -25,9 +27,23 @@ class ToolTypeMixin(object):
         return "<ToolTypeMixin(systime='%d', usertime='%d', elapsed='%s', cpu='%d', max_resident_time='%d'>" %(self.systime,
                 self.usertime, self.elapsed, self.cpu, self.max_resident_time)
 
-class SomaticSniper(ToolTypeMixin, Base):
+class Metrics(ToolTypeMixin, Base):
 
-    __tablename__ = 'somaticsniper'
+    __tablename__ = 'metrics_table'
+
+@contextmanager
+def session_scope():
+    """ Provide a transactional scope around a series of transactions """
+
+    session = Session()
+    try:
+        yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 def db_connect(database):
     """performs database connection"""
@@ -44,43 +60,41 @@ def create_table(engine, tool):
         Base.metadata.create_all(engine)
 
 
-def add_metrics(config, tool, uuid, sys, user, elap, cpu_use, resident, logger):
+def add_metrics(engine, toolname, case_id, file_ids, metrics, logger):
     """ add provided metrics to database """
 
-    if 'username' not in config:
-        raise Exception("username for logging into the database not found")
-    if 'password' not in config:
-        raise Exception("password for logging into the database not found")
 
-    DATABASE = {
-        'drivername': 'postgres',
-        'host' : 'pgreadwrite.osdc.io',
-        'port' : '5432',
-        'username': config['username'],
-        'password' : config['password'],
-        'database' : 'prod_bioinfo'
-    }
+    #check if metrics has all information
+    if 'system_time' not in metrics:
+        raise Exception("system_time not found in metrics")
+    if 'user_time' not in metrics:
+        raise Exception("user_time not found in metrics")
+    if 'wall_clock' not in metrics:
+        raise Exception("wall_clock not found in metrics")
+    if 'percent_of_cpu' not in metrics:
+        raise Exception("percent_of_cpu not found in metrics")
+    if 'maximum_resident_set_size' not in metrics:
+        raise Exception("maximum resident set size not found in metrics")
 
-
-    print uuid
-    engine = db_connect(DATABASE)
 
     Session = sessionmaker()
     Session.configure(bind=engine)
     session = Session()
 
-    if tool=='somaticsniper':
-        metrics = SomaticSniper(files=[uuid], systime=sys, usertime=user, elapsed=elap, cpu=cpu_use, max_resident_time=resident)
+    met = Metrics(case_id = case_id,
+                    tool = toolname,
+                    files=file_ids,
+                    systime=metrics['system_time'],
+                    usertime=metrics['user_time'],
+                    elapsed=metrics['wall_clock'],
+                    cpu=metrics['percent_of_cpu'],
+                    max_resident_time=metrics['maximum_resident_set_size'])
 
-    create_table(engine, metrics)
+    create_table(engine, met)
 
-    try:
-        session.add(metrics)
-        session.commit()
-    except exc.IntegrityError:
-        session.rollback()
-        raise Exception("An entry for universal id: %s for tool %s already present." %(metrics.id, tool))
-    else:
-        logger.info("Added entry for universal id: %s in table %s." %(metrics.id, metrics.__tablename__))
 
-    session.close()
+    session.add(met)
+    session.commit()
+
+    logger.info("Added entry for case id: %s in table %s." %(met.case_id, met.__tablename__))
+

@@ -1,13 +1,14 @@
 import setupLog
-import pipelineUtil
 import os
 import logging
 import argparse
 import somaticsniper
+import postgres
 
 if __name__=="__main__":
 
     parser = argparse.ArgumentParser(description="Variant calling using Somatic-Sniper")
+
     required = parser.add_argument_group("Required input parameters")
     required.add_argument("--ref", default=None, help="path to reference genome", required=True)
     required.add_argument("--normal", default=None, help="path to normal bam file", required=True)
@@ -16,7 +17,9 @@ if __name__=="__main__":
     required.add_argument("--config", default=None, help="path to config file for db", required=True)
 
     optional = parser.add_argument_group("optional input parameters")
-    optional.add_argument("--uuid", default="unknown", help="unique identifier")
+    optional.add_argument("--normal_id", default="unknown", help="unique identifier for normal dataset")
+    optional.add_argument("--tumor_id", default="unknown", help="unique identifier for tumor dataset")
+    optional.add_argument("--case_id", default="unknown", help="unique identifier")
     optional.add_argument("--outdir", default="./", help="path for logs etc.")
 
     sniper = parser.add_argument_group("Somaticsniper input parameters")
@@ -34,7 +37,12 @@ if __name__=="__main__":
     sniper.add_argument("-t", default="TUMOR", help="tumor sample id (for VCF header)")
     sniper.add_argument("-F", default="vcf", help="select output format: classic/vcf/bed")
 
+    db = parser.add_argument_group("Database parameters")
+    db.add_argument("--host", default='pgreadwrite.osdc.io', help='hostname for db')
+    db.add_argument("--database", default='prod_bioinfo', help='name of the database')
+
     args = parser.parse_args()
+
     if not os.path.isfile(args.ref):
         raise Exception("Could not find reference file %s, please check that the file exists and the path is correct" %args.ref)
 
@@ -45,20 +53,44 @@ if __name__=="__main__":
         raise Exception("Could not find bam file %s, please check that the file exists and the path is correct" %args.tumor)
 
     if not os.path.abspath(args.snp):
-        raise Exception("Could not find directory %s, please chec that the directory exists and the path is correct" %os.path.abspath(args.snp))
+        raise Exception("Could not find directory %s, please check that the directory exists and the path is correct" %os.path.abspath(args.snp))
 
+    if not os.path.isfile(args.config):
+        raise Exception("Could not find config file %s, please check that the file exists and the path is correct" %args.config)
 
-    log_file = "%s.somaticsniper.log" %(os.path.join(args.outdir, args.uuid))
-    logger = setupLog.setup_logging(logging.INFO, args.uuid, log_file)
+    log_file = "%s.somaticsniper.log" %(os.path.join(args.outdir, args.case_id))
+    logger = setupLog.setup_logging(logging.INFO, args.case_id, log_file)
 
-    s = open(args.config, 'r').read()
-    config = eval(s)
+    metrics = somaticsniper.run_somaticsniper(args, logger)
 
-    exit_code = somaticsniper.run_somaticsniper(config, args, args.ref, args.tumor, args.normal, args.snp, logger)
-
-    if not exit_code:
+    if not metrics['exit_status']:
         logger.info("somatic-sniper completed successfully")
     else:
         raise Exception("Somatic sniper exited with a non-zero exitcode: %s" %exit_code)
 
     #add metrics information to postgres database.
+
+    s = open(args.config, 'r').read()
+    config = eval(s)
+
+    #check if username and password are present
+    if 'username' not in config:
+        raise Exception("username for logging into the database not found")
+    if 'password' not in config:
+        raise Exception("password for logging into the database not found")
+
+    DATABASE = {
+        'drivername': 'postgres',
+        'host' : args.host,
+        'port' : '5432',
+        'username': config['username'],
+        'password' : config['password'],
+        'database' : args.database
+    }
+
+
+    engine = postgres.db_connect(DATABASE)
+
+    files = [args.normal_id, args.tumor_id]
+    postgres.add_metrics(engine, 'somaticsniper', args.case_id, files, metrics, logger)
+
