@@ -24,7 +24,6 @@ def run_somaticsniper(args, logger):
     if args.J == "T": cmd += ["-J"]
 
     cmd += ['-f', args.ref, args.tumor, args.normal, args.snp]
-    print cmd
     output = pipe_util.do_command(cmd, logger)
     metrics = time_util.parse_time(output)
 

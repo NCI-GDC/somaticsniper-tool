@@ -3,7 +3,7 @@ import os
 import logging
 import argparse
 import somaticsniper
-import postgres
+from cdis_pipe_utils import postgres
 
 if __name__=="__main__":
 
