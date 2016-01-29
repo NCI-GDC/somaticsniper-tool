@@ -14,7 +14,8 @@ if __name__=="__main__":
     required.add_argument("--normal", default=None, help="path to normal bam file", required=True)
     required.add_argument("--tumor", default=None, help="path to tumor bam file", required=True)
     required.add_argument("--snp", default=None, help="path to output snp file", required=True)
-    required.add_argument("--config", default=None, help="path to config file for db", required=True)
+    required.add_argument("--username", default=None, help="username for db access", required=True)
+    required.add_argument("--password", default=None, help="password for db access", required=True)
 
     optional = parser.add_argument_group("optional input parameters")
     optional.add_argument("--normal_id", default="unknown", help="unique identifier for normal dataset")
@@ -70,21 +71,13 @@ if __name__=="__main__":
 
     #add metrics information to postgres database.
 
-    s = open(args.config, 'r').read()
-    config = eval(s)
-
-    #check if username and password are present
-    if 'username' not in config:
-        raise Exception("username for logging into the database not found")
-    if 'password' not in config:
-        raise Exception("password for logging into the database not found")
 
     DATABASE = {
         'drivername': 'postgres',
         'host' : args.host,
         'port' : '5432',
-        'username': config['username'],
-        'password' : config['password'],
+        'username': args.username,
+        'password' : args.password,
         'database' : args.database
     }
 
