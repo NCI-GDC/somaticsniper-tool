@@ -4,6 +4,14 @@ import logging
 import argparse
 import somaticsniper
 from cdis_pipe_utils import postgres
+from postgres import ToolTypeMixin
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class Somaticsniper(ToolTypeMixin, Base):
+
+    __tablename__ = "somaticsniper_metrics"
 
 if __name__=="__main__":
 
@@ -84,6 +92,17 @@ if __name__=="__main__":
 
     engine = postgres.db_connect(DATABASE)
 
-    files = [args.normal_id, args.tumor_id]
-    postgres.add_metrics(engine, 'somaticsniper', args.case_id, files, metrics, logger)
+    file_ids = [args.normal_id, args.tumor_id]
+    #create metrics object
+    met = Somaticsniper(case_id = args.case_id,
+                    tool = 'somaticsniper',
+                    files=file_ids,
+                    systime=metrics['system_time'],
+                    usertime=metrics['user_time'],
+                    elapsed=metrics['wall_clock'],
+                    cpu=metrics['percent_of_cpu'],
+                    max_resident_time=metrics['maximum_resident_set_size'])
 
+    postgres.create_table(engine, met)
+    postgres.add_metrics(engine, met)
+    logger.info("Added entry for case id: %s in table %s." %(met.case_id, met.__tablename__))
