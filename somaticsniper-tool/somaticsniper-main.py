@@ -60,9 +60,6 @@ if __name__=="__main__":
     if not os.path.abspath(args.snp):
         raise Exception("Could not find directory %s, please check that the directory exists and the path is correct" %os.path.abspath(args.snp))
 
-    if not os.path.isfile(args.config):
-        raise Exception("Could not find config file %s, please check that the file exists and the path is correct" %args.config)
-
     log_file = "%s.somaticsniper.log" %(os.path.join(args.outdir, args.case_id))
     logger = setupLog.setup_logging(logging.INFO, args.case_id, log_file)
 
