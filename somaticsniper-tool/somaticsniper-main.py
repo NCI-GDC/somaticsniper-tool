@@ -99,4 +99,4 @@ if __name__=="__main__":
 
     postgres.create_table(engine, met)
     postgres.add_metrics(engine, met)
-    logger.info("Added entry for case id: %s in table %s." %(met.case_id, met.__tablename__))
+    logger.info("added metrics for %s" %args.case_id)
