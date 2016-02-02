@@ -4,14 +4,10 @@ import logging
 import argparse
 import somaticsniper
 from cdis_pipe_utils import postgres
-from postgres import ToolTypeMixin
-from sqlalchemy.ext.declarative import declarative_base
 
-Base = declarative_base()
+class Somaticsniper(postgres.ToolTypeMixin, postgres.Base):
 
-class Somaticsniper(ToolTypeMixin, Base):
-
-    __tablename__ = "somaticsniper_metrics"
+    __tablename__ = 'somaticsniper_metrics'
 
 if __name__=="__main__":
 
@@ -93,6 +89,7 @@ if __name__=="__main__":
     engine = postgres.db_connect(DATABASE)
 
     file_ids = [args.normal_id, args.tumor_id]
+
     #create metrics object
     met = Somaticsniper(case_id = args.case_id,
                     tool = 'somaticsniper',
