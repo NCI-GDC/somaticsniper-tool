@@ -4,6 +4,39 @@ import subprocess
 import logging
 import time
 import shutil
+import postgres
+
+
+def add_to_db(config,tool, uuid, line, logger):
+    """ add information to database """
+
+    line = line.split()
+    user = line[3].replace("user", "")
+    system = line[4].replace("system", "")
+    cpu = line[6].replace("%CPU", "")
+    mem = line[8].replace("maxresident)k", "")
+    elapsed = line[5].replace("elapsed", "")
+
+    #convert elapsed time to seconds
+    elapsed = reversed(elapsed.split(":"))
+    time = 0
+    power =0
+    for item in (elapsed):
+        time = time + float(item) * pow(60, power)
+        power += 1
+
+    postgres.add_metrics(config, tool,  uuid, system, user, time, cpu, mem, logger)
+
+def is_timing_info(line):
+    """ check if the output is timing information """
+
+    if ("user" in line
+            and "system" in line
+            and "elapsed" in line
+            and "maxresident" in line):
+        return True
+    else:
+        return False
 
 def retrieve_data(analysis_id, cghub_key, output_dir, logger=None):
     if not os.path.isdir(os.path.join(output_dir, analysis_id)):
@@ -27,22 +60,26 @@ def run_command(cmd, logger=None, shell_var=False):
         stdoutdata = stdoutdata.split("\n")
         for line in stdoutdata:
             logger.info(line)
+            if is_timing_info(line):
+                timing = line
 
         stderrdata = stderrdata.split("\n")
         for line in stderrdata:
             logger.info(line)
 
-    return exit_code
+    return (timing, exit_code)
 
-def log_function_time(fn, analysis_id, cmd, logger=None, shell_var=False):
+def log_function_time(config, fn, analysis_id, cmd, logger=None, shell_var=False):
     """ Log the time taken by a command to the logger """
 
     start_time = time.time()
-    exit_code = run_command(cmd, logger, shell_var)
+    (timing, exit_code) = run_command(cmd, logger, shell_var)
     end_time = time.time()
 
     if logger != None:
         logger.info("%s_TIME\t%s\t%s" %(fn, analysis_id,  (end_time - start_time)/60.0))
+
+    add_to_db(config, fn, uuid, logger)
 
     print "exit_code for %s is %s" %(cmd, exit_code)
     return exit_code

@@ -1,22 +1,30 @@
 import setupLog
-import pipelineUtil
 import os
 import logging
 import argparse
 import somaticsniper
+from cdis_pipe_utils import postgres
+
+class Somaticsniper(postgres.ToolTypeMixin, postgres.Base):
+
+    __tablename__ = 'somaticsniper_metrics'
 
 if __name__=="__main__":
 
     parser = argparse.ArgumentParser(description="Variant calling using Somatic-Sniper")
+
     required = parser.add_argument_group("Required input parameters")
     required.add_argument("--ref", default=None, help="path to reference genome", required=True)
     required.add_argument("--normal", default=None, help="path to normal bam file", required=True)
     required.add_argument("--tumor", default=None, help="path to tumor bam file", required=True)
     required.add_argument("--snp", default=None, help="path to output snp file", required=True)
-
+    required.add_argument("--username", default=None, help="username for db access", required=True)
+    required.add_argument("--password", default=None, help="password for db access", required=True)
 
     optional = parser.add_argument_group("optional input parameters")
-    optional.add_argument("--uuid", default="unknown", help="unique identifier")
+    optional.add_argument("--normal_id", default="unknown", help="unique identifier for normal dataset")
+    optional.add_argument("--tumor_id", default="unknown", help="unique identifier for tumor dataset")
+    optional.add_argument("--case_id", default="unknown", help="unique identifier")
     optional.add_argument("--outdir", default="./", help="path for logs etc.")
 
     sniper = parser.add_argument_group("Somaticsniper input parameters")
@@ -34,6 +42,10 @@ if __name__=="__main__":
     sniper.add_argument("-t", default="TUMOR", help="tumor sample id (for VCF header)")
     sniper.add_argument("-F", default="vcf", help="select output format: classic/vcf/bed")
 
+    db = parser.add_argument_group("Database parameters")
+    db.add_argument("--host", default='pgreadwrite.osdc.io', help='hostname for db')
+    db.add_argument("--database", default='prod_bioinfo', help='name of the database')
+
     args = parser.parse_args()
 
     if not os.path.isfile(args.ref):
@@ -46,17 +58,45 @@ if __name__=="__main__":
         raise Exception("Could not find bam file %s, please check that the file exists and the path is correct" %args.tumor)
 
     if not os.path.abspath(args.snp):
-        raise Exception("Could not find directory %s, please chec that the directory exists and the path is correct" %os.path.abspath(args.snp))
+        raise Exception("Could not find directory %s, please check that the directory exists and the path is correct" %os.path.abspath(args.snp))
 
+    log_file = "%s.somaticsniper.log" %(os.path.join(args.outdir, args.case_id))
+    logger = setupLog.setup_logging(logging.INFO, args.case_id, log_file)
 
-    log_file = "%s.somaticsniper.log" %(os.path.join(args.outdir, args.uuid))
-    logger = setupLog.setup_logging(logging.INFO, args.uuid, log_file)
+    metrics = somaticsniper.run_somaticsniper(args, logger)
 
-    exit_code = somaticsniper.run_somaticsniper(args, args.ref, args.tumor, args.normal, args.snp, logger)
-
-    if not exit_code:
+    if not metrics['exit_status']:
         logger.info("somatic-sniper completed successfully")
     else:
         raise Exception("Somatic sniper exited with a non-zero exitcode: %s" %exit_code)
 
+    #add metrics information to postgres database.
 
+
+    DATABASE = {
+        'drivername': 'postgres',
+        'host' : args.host,
+        'port' : '5432',
+        'username': args.username,
+        'password' : args.password,
+        'database' : args.database
+    }
+
+
+    engine = postgres.db_connect(DATABASE)
+
+    file_ids = [args.normal_id, args.tumor_id]
+
+    #create metrics object
+    met = Somaticsniper(case_id = args.case_id,
+                    tool = 'somaticsniper',
+                    files=file_ids,
+                    systime=metrics['system_time'],
+                    usertime=metrics['user_time'],
+                    elapsed=metrics['wall_clock'],
+                    cpu=metrics['percent_of_cpu'],
+                    max_resident_time=metrics['maximum_resident_set_size'])
+
+    postgres.create_table(engine, met)
+    postgres.add_metrics(engine, met)
+    logger.info("added metrics for %s" %args.case_id)
