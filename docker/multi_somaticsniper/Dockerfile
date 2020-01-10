@@ -28,8 +28,6 @@ RUN cd /opt/ \
     && make deps \
     && make -j \
     && make install \
-    && cd - \
-    && rm -rf /opt/somatic-sniper-1.0.5.0 \
     && cd /opt/ \
     && wget http://sourceforge.net/projects/samtools/files/samtools/1.1/samtools-1.1.tar.bz2 \
     && tar xf samtools-1.1.tar.bz2 \

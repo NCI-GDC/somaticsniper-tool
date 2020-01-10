@@ -20,6 +20,4 @@ RUN cd /opt/ \
     && cmake . \
     && make deps \
     && make -j \
-    && make install \
-    && cd - \
-    && rm -rf /opt/somatic-sniper-1.0.5.0
+    && make install
