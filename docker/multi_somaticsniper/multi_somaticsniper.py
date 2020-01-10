@@ -43,8 +43,9 @@ def run_command(cmd, logger, shell_var=False):
         stdoutdata, stderrdata = child.communicate()
         logger.info(stdoutdata)
         logger.info(stderrdata)
-    except BaseException:
-        logger.error("command failed %s", cmd)
+    except BaseException as err:
+        logger.error("Command failed %s", cmd)
+        logger.error("Command Error: %s", err)
     return child.returncode
 
 
@@ -52,7 +53,7 @@ def multi_commands(dct, mpileups, thread_count, logger, shell_var=True):
     """run commands on number of threads"""
     pool = Pool(int(thread_count))
     output = pool.map(
-        partial(somaticsniper, dct, logger, shell_var=shell_var), mpileups
+        partial(somaticsniper, dct, logger=logger, shell_var=shell_var), mpileups
     )
     return output
 
@@ -73,33 +74,33 @@ def annotate_filter(raw, post_filter, new):
     filter_reject = (
         '##FILTER=<ID=REJECT,Description="Rejected as an unconfident somatic mutation">'
     )
-    filter_loh = (
-        '##FILTER=<ID=LOH,Description="Rejected as a loss of heterozygosity">'
-    )
-    with open(raw, "rb") as fin:
-        with open(post_filter, "rb") as fcom:
-            hc = set(fin).intersection(fcom)
-            with open(new, "w") as fout:
-                for i in fin:
-                    if i.startswith("##fileformat"):
-                        fout.write(i)
-                        fout.write("{}\n".format(filter_pass))
-                        fout.write("{}\n".format(filter_reject))
-                        fout.write("{}\n".format(filter_loh))
-                    elif i.startswith("#"):
-                        fout.write(i)
-                    elif i in hc:
-                        new = i.split("\t")
-                        new[6] = "PASS"
-                        fout.write("\t".join(new))
-                    elif i.split(":")[-2] == "3":
-                        new = i.split("\t")
-                        new[6] = "LOH"
-                        fout.write("\t".join(new))
-                    else:
-                        new = i.split("\t")
-                        new[6] = "REJECT"
-                        fout.write("\t".join(new))
+    filter_loh = '##FILTER=<ID=LOH,Description="Rejected as a loss of heterozygosity">'
+    writer = open(new, "w")
+    r = open(raw)
+    filtered = open(post_filter)
+    hc = set(r).intersection(filtered)
+    r.close()
+    filtered.close()
+    try:
+        with open(raw) as f:
+            for line in f:
+                if line.startswith("##reference"):
+                    writer.write(line)
+                    writer.write("{}\n".format(filter_pass))
+                    writer.write("{}\n".format(filter_reject))
+                    writer.write("{}\n".format(filter_loh))
+                elif line.startswith("#"):
+                    writer.write(line)
+                elif line in hc:
+                    new = line.split("\t")
+                    new[6] = "LOH"
+                    writer.write("\t".join(new))
+                else:
+                    new = line.split("\t")
+                    new[6] = "REJECT"
+                    writer.write("\t".join(new))
+    finally:
+        writer.close()
 
 
 def somaticsniper(dct, mpileup, logger, shell_var=True):
@@ -109,19 +110,19 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
     calling_cmd = [
         "bam-somaticsniper",
         "-q",
-        dct["map_q"],
+        str(dct["map_q"]),
         "-Q",
-        dct["base_q"],
+        str(dct["base_q"]),
         "-s",
-        dct["pps"],
+        str(dct["pps"]),
         "-T",
-        dct["theta"],
+        str(dct["theta"]),
         "-N",
-        dct["nhap"],
+        str(dct["nhap"]),
         "-r",
-        dct["pd"],
+        str(dct["pd"]),
         "-F",
-        dct["fout"],
+        str(dct["fout"]),
     ]
     if dct["loh"]:
         calling_cmd += ["-L"]
@@ -133,9 +134,9 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
         calling_cmd += ["-J"]
     calling_cmd += [
         "-f",
-        dct["ref"],
-        "<(samtools view -b {} {})".format(dct["tumor"], region),
-        "<(samtools view -b {} {})".format(dct["normal"], region),
+        dct["reference_path"],
+        "<(samtools view -b {} {})".format(dct["tumor_bam"], region),
+        "<(samtools view -b {} {})".format(dct["normal_bam"], region),
         output,
     ]
     logger.info("SomaticSniper Args: %s", " ".join(calling_cmd))
@@ -144,10 +145,11 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
     )
     if calling_output != 0:
         logger.error("Failed on SomaticSniper calling")
+        return calling_output
     else:
         loh_filter_cmd = [
             "perl",
-            "/somatic-sniper-1.0.5.0/src/scripts/snpfilter.pl",
+            "/opt/somatic-sniper-1.0.5.0/src/scripts/snpfilter.pl",
             "--snp-file",
             output,
             "--indel-file",
@@ -160,10 +162,11 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
         )
         if loh_cmd_output != 0:
             logger.error("Failed on LOH filtering")
+            return loh_cmd_output
         else:
             hc_filter_cmd = [
                 "perl",
-                "/somatic-sniper-1.0.5.0/src/scripts/highconfidence.pl",
+                "/opt/somatic-sniper-1.0.5.0/src/scripts/highconfidence.pl",
                 "--snp-file",
                 loh_output,
             ]
@@ -174,9 +177,17 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
             )
             if hc_cmd_output != 0:
                 logger.error("Failed on HC filtering")
+                return hc_cmd_output
             else:
                 annotated_vcf = output_base + ".annotated.vcf"
-                annotate_filter(output, hc_output, annotated_vcf)
+                try:
+                    logger.info("Annotating raw VCF: %s", output)
+                    annotate_filter(output, hc_output, annotated_vcf)
+                except BaseException as err:
+                    logger.error("Annotation failed")
+                    logger.error("Command Error: %s", err)
+                    return 1
+    return 0
 
 
 def merge_outputs(output_list, merged_file):
@@ -206,15 +217,46 @@ def get_args():
         help="Reference path."
     )
     parser.add_argument(
+        "-t",
+        "--tumor_bam",
+        required=True,
+        help="Tumor bam file."
+    )
+    parser.add_argument(
+        "-n",
+        "--normal_bam",
+        required=True,
+        help="Normal bam file."
+    )
+    parser.add_argument(
+        "-c",
+        "--thread_count",
+        type=int,
+        required=True,
+        help="Number of thread."
+    )
+    parser.add_argument(
+        "-m",
+        "--mpileup",
+        action="append",
+        required=True,
+        help='A list of normal-tumor samtools mpileup files on different region. \
+            Created by "samtools mpileup -f". The file name must contain region. \
+            e.g. chr1-1-248956422.mpileup',
+    )
+    # Optional flags.
+    parser.add_argument(
         "-q",
         "--map_q",
-        required=True,
+        default=1,
+        type=int,
         help="filtering reads with mapping quality less than this value.",
     )
     parser.add_argument(
         "-Q",
         "--base_q",
-        required=True,
+        default=15,
+        type=int,
         help="filtering somatic snv output with somatic quality less than this value.",
     )
     parser.add_argument(
@@ -245,58 +287,36 @@ def get_args():
     parser.add_argument(
         "-s",
         "--pps",
-        required=True,
+        default=0.01,
+        type=float,
         help="prior probability of a somatic mutation (implies -J).",
     )
     parser.add_argument(
         "-T",
         "--theta",
-        required=True,
+        default=0.85,
+        type=float,
         help="theta in maq consensus calling model (for -c/-g).",
     )
     parser.add_argument(
         "-N",
         "--nhap",
-        required=True,
+        default=2,
+        type=int,
         help="number of haplotypes in the sample."
     )
     parser.add_argument(
         "-r",
         "--pd",
-        required=True,
+        default=0.001,
+        type=float,
         help="prior of a difference between two haplotypes.",
     )
     parser.add_argument(
         "-F",
         "--fout",
-        required=True,
+        default="vcf",
         help="output format (classic/vcf/bed)."
-    )
-    parser.add_argument(
-        "-t",
-        "--tumor_bam",
-        required=True,
-        help="Tumor bam file."
-    )
-    parser.add_argument(
-        "-n",
-        "--normal_bam",
-        required=True,
-        help="Normal bam file."
-    )
-    parser.add_argument(
-        "-c",
-        "--thread_count",
-        type=int,
-        required=True,
-        help="Number of thread."
-    )
-    parser.add_argument(
-        "-m",
-        "--mpileup",
-        action="append",
-        required=True,
-        help="mpileup files."
     )
     return parser.parse_args()
 
@@ -309,9 +329,15 @@ def main(args, logger):
     if any(x != 0 for x in outputs):
         logger.error("Failed multi_somaticsniper")
     else:
-        logger.info("Completed multi_somaticsniper")
         vcfs = glob.glob("*.annotated.vcf")
-        merge_outputs(vcfs, "multi_somaticsniper_merged.vcf")
+        merged = "multi_somaticsniper_merged.vcf"
+        try:
+            merge_outputs(vcfs, merged)
+        except BaseException as err:
+            logger.error("Merge outputs failed")
+            logger.error("Command Error: %s", err)
+        assert os.stat(merged).st_size != 0, "Merged VCF is Empty"
+        logger.info("Completed multi_somaticsniper")
 
 
 if __name__ == "__main__":
