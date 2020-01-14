@@ -1,11 +1,10 @@
 FROM ubuntu:16.04
 LABEL maintainer="sli6@uchicago.edu"
 LABEL version="1.4"
-LABEL description="Python wrapper of multithreading `Somatic-sniper` v1.0.5.0"
+LABEL description="Python wrapper of multithreading `SomaticSniper` v1.0.5.0"
 
 RUN apt-get update -y \
     && apt-get install -y \
-    python-pip \
     python-dev \
     build-essential \
     cmake \
