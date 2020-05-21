@@ -7,12 +7,15 @@ Multithreading SomaticSniper
 import os
 import sys
 import time
-import logging
 import glob
+import ctypes
+import logging
 import argparse
+import threading
 import subprocess
+from signal import SIGKILL
 from functools import partial
-from multiprocessing.dummy import Pool
+from concurrent.futures import ThreadPoolExecutor
 
 
 def setup_logger():
@@ -29,33 +32,55 @@ def setup_logger():
     return logger
 
 
-def run_command(cmd, logger, shell_var=False):
-    """Runs a subprocess"""
+def subprocess_commands_pipe(cmd, logger, shell_var=True, lock=threading.Lock()):
+    """run pool commands"""
+    libc = ctypes.CDLL("libc.so.6")
+    pr_set_pdeathsig = ctypes.c_int(1)
+
+    def child_preexec_set_pdeathsig():
+        """
+        preexec_fn argument for subprocess.Popen,
+        it will send a SIGKILL to the child once the parent exits
+        """
+
+        def pcallable():
+            return libc.prctl(pr_set_pdeathsig, ctypes.c_ulong(SIGKILL))
+
+        return pcallable
+
     try:
-        child = subprocess.Popen(
+        output = subprocess.Popen(
             cmd,
-            stdin=subprocess.PIPE,
+            executable="/bin/bash",
+            shell=shell_var,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            shell=shell_var,
-            executable="/bin/bash",
+            preexec_fn=child_preexec_set_pdeathsig(),
         )
-        stdoutdata, stderrdata = child.communicate()
-        logger.info(stdoutdata)
-        logger.info(stderrdata)
-    except BaseException as err:
-        logger.error("Command failed %s", cmd)
-        logger.error("Command Error: %s", err)
-    return child.returncode
+        ret = output.wait()
+        with lock:
+            logger.info("Running command: %s", cmd)
+    except BaseException as e:
+        output.kill()
+        with lock:
+            logger.error("command failed %s", cmd)
+            logger.exception(e)
+    finally:
+        output_stdout, output_stderr = output.communicate()
+        with lock:
+            logger.error(output_stdout.decode("UTF-8"))
+            logger.error(output_stderr.decode("UTF-8"))
+    return ret
 
 
-def multi_commands(dct, mpileups, thread_count, logger, shell_var=True):
+def tpe_submit_commands(kwargs, mpileups, thread_count, logger, shell_var=True):
     """run commands on number of threads"""
-    pool = Pool(int(thread_count))
-    output = pool.map(
-        partial(somaticsniper, dct, logger=logger, shell_var=shell_var), mpileups
-    )
-    return output
+    with ThreadPoolExecutor(max_workers=thread_count) as e:
+        for p in mpileups:
+            e.submit(
+                partial(somaticsniper, kwargs, logger=logger, shell_var=shell_var),
+                p,
+            )
 
 
 def get_region(mpileup):
@@ -140,12 +165,11 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
         output,
     ]
     logger.info("SomaticSniper Args: %s", " ".join(calling_cmd))
-    calling_output = run_command(
+    calling_output = subprocess_commands_pipe(
         " ".join(calling_cmd), logger, shell_var=shell_var
     )
     if calling_output != 0:
         logger.error("Failed on SomaticSniper calling")
-        return calling_output
     else:
         loh_filter_cmd = [
             "perl",
@@ -157,12 +181,11 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
         ]
         loh_output = output + ".SNPfilter"
         logger.info("LOH filtering Args: %s", " ".join(loh_filter_cmd))
-        loh_cmd_output = run_command(
+        loh_cmd_output = subprocess_commands_pipe(
             " ".join(loh_filter_cmd), logger, shell_var=shell_var
         )
         if loh_cmd_output != 0:
             logger.error("Failed on LOH filtering")
-            return loh_cmd_output
         else:
             hc_filter_cmd = [
                 "perl",
@@ -172,12 +195,11 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
             ]
             hc_output = loh_output + ".hc"
             logger.info("High confidence filtering Args: %s", " ".join(hc_filter_cmd))
-            hc_cmd_output = run_command(
+            hc_cmd_output = subprocess_commands_pipe(
                 " ".join(hc_filter_cmd), logger, shell_var=shell_var
             )
             if hc_cmd_output != 0:
                 logger.error("Failed on HC filtering")
-                return hc_cmd_output
             else:
                 annotated_vcf = output_base + ".annotated.vcf"
                 try:
@@ -185,9 +207,8 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
                     annotate_filter(output, hc_output, annotated_vcf)
                 except BaseException as err:
                     logger.error("Annotation failed")
-                    logger.error("Command Error: %s", err)
-                    return 1
-    return 0
+                    logger.exception("Command Error: %s", err)
+                    sys.exit(1)
 
 
 def merge_outputs(output_list, merged_file):
@@ -199,8 +220,14 @@ def merge_outputs(output_list, merged_file):
                 for line in fh:
                     if first or not line.startswith("#"):
                         oh.write(line)
-            first = False
+            first = True
     return merged_file
+
+
+def get_file_size(filename):
+    """ Gets file size """
+    fstats = os.stat(filename)
+    return fstats.st_size
 
 
 def get_args():
@@ -324,20 +351,22 @@ def get_args():
 def main(args, logger):
     """main"""
     logger.info("Running SomaticSniper 1.0.5.0")
-    dct = vars(args)
-    outputs = multi_commands(dct, dct["mpileup"], dct["thread_count"], logger)
-    if any(x != 0 for x in outputs):
-        logger.error("Failed multi_somaticsniper")
-    else:
-        vcfs = glob.glob("*.annotated.vcf")
-        merged = "multi_somaticsniper_merged.vcf"
-        try:
-            merge_outputs(vcfs, merged)
-        except BaseException as err:
-            logger.error("Merge outputs failed")
-            logger.error("Command Error: %s", err)
-        assert os.stat(merged).st_size != 0, "Merged VCF is Empty"
-        logger.info("Completed multi_somaticsniper")
+    kwargs = vars(args)
+
+    # Start Queue
+    tpe_submit_commands(kwargs, kwargs["mpileup"], kwargs["thread_count"], logger)
+
+    # Check outputs
+    vcfs = glob.glob("*.annotated.vcf")
+    assert len(vcfs) == len(
+        get_region(kwargs["mpileup"])
+    ), "Missing output!"
+    if any(get_file_size(x) == 0 for x in vcfs):
+        logger.error("Empty output detected!")
+
+    # Merge
+    merged = "multi_somaticsniper_merged.vcf"
+    merge_outputs(vcfs, merged)
 
 
 if __name__ == "__main__":
@@ -345,7 +374,7 @@ if __name__ == "__main__":
     start = time.time()
     logger_ = setup_logger()
     logger_.info("-" * 80)
-    logger_.info("multi_somaticsniper.py")
+    logger_.info("multi_somaticsniper_p3.py")
     logger_.info("Program Args: %s", " ".join(sys.argv))
     logger_.info("-" * 80)
 
