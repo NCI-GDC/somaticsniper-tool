@@ -1,11 +1,11 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 LABEL maintainer="sli6@uchicago.edu"
 LABEL version="1.4"
 LABEL description="Python wrapper of multithreading `SomaticSniper` v1.0.5.0"
 
-RUN apt-get update -y \
-    && apt-get install -y \
-    python-dev \
+RUN apt update -y \
+    && apt install -y \
+    software-properties-common \
     build-essential \
     cmake \
     zlib1g-dev \
@@ -15,7 +15,11 @@ RUN apt-get update -y \
     gcc \
     make \
     libbz2-dev \
-    liblzma-dev \
+    liblzma-dev
+
+RUN add-apt-repository ppa:deadsnakes/ppa \
+    && apt update -y \
+    && apt install python3.7 -y \
     && apt-get clean
 
 RUN cd /opt/ \
@@ -36,4 +40,4 @@ RUN cd /opt/ \
     && cd - \
     && rm -rf /opt/samtools-1.1
 
-ADD multi_somaticsniper.py /opt
+ADD multi_somaticsniper_p3.py /opt
