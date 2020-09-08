@@ -4,25 +4,62 @@ Multithreading SomaticSniper
 @author: Shenglai Li
 """
 
-import os
-import sys
-import time
-import glob
-import ctypes
-import logging
 import argparse
-import threading
+import logging
+import os
+import pathlib
+import shlex
 import subprocess
-from signal import SIGKILL
-from functools import partial
+import sys
+import tempfile
+import threading
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
+from textwrap import dedent
+from types import SimpleNamespace
+from typing import List, Optional
+
+logger = logging.getLogger(__name__)
+
+COMMANDS = SimpleNamespace(
+    highconfidence=dedent(
+        """
+        perl {highconfidence}
+        --snp-file {loh_output}
+        """
+    ).strip(),
+    samtools="samtools view -b {bam_path} {region}",
+    somatic_sniper=dedent(
+        """
+        {somaticsniper_binary}
+        -q {map_q}
+        -Q {base_q}
+        -s {pps}
+        -T {theta}
+        -N {nhap}
+        -r {pd}
+        -F {fout}
+        {extra_args}
+        -f {reference_path}
+        {tumor_bam}
+        {normal_bam}
+        {output_file}
+        """
+    ).strip(),
+    snpfilter=dedent(
+        """
+        perl {snpfilter}
+        --snp-file {output_vcf_file}
+        --indel-file {indel_file}
+        """
+    ).strip(),
+)
 
 
 def setup_logger():
     """
     Sets up the logger.
     """
-    logger = logging.getLogger("multi_somaticsniper")
     logger_format = "[%(levelname)s] [%(asctime)s] [%(name)s] - %(message)s"
     logger.setLevel(level=logging.INFO)
     handler = logging.StreamHandler(sys.stderr)
@@ -32,61 +69,89 @@ def setup_logger():
     return logger
 
 
-def subprocess_commands_pipe(cmd, logger, shell_var=True, lock=threading.Lock()):
+def run_subprocess_command(cmd: str, timeout: int = 3600, **kwargs):
     """run pool commands"""
-    libc = ctypes.CDLL("libc.so.6")
-    pr_set_pdeathsig = ctypes.c_int(1)
 
-    def child_preexec_set_pdeathsig():
-        """
-        preexec_fn argument for subprocess.Popen,
-        it will send a SIGKILL to the child once the parent exits
-        """
-
-        def pcallable():
-            return libc.prctl(pr_set_pdeathsig, ctypes.c_ulong(SIGKILL))
-
-        return pcallable
+    p = subprocess.Popen(shlex.split(cmd), **kwargs)
+    try:
+        stdout, stderr = p.communicate(timeout=timeout)
+    except TimeoutError:
+        p.kill()
+        stdout, stderr = p.communicate()
 
     try:
-        output = subprocess.Popen(
-            cmd,
-            executable="/bin/bash",
-            shell=shell_var,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=child_preexec_set_pdeathsig(),
-        )
-        ret = output.wait()
-        with lock:
-            logger.info("Running command: %s", cmd)
-    except BaseException as e:
-        output.kill()
-        with lock:
-            logger.error("command failed %s", cmd)
-            logger.exception(e)
-    finally:
-        output_stdout, output_stderr = output.communicate()
-        with lock:
-            logger.info(output_stdout.decode("UTF-8"))
-            logger.info(output_stderr.decode("UTF-8"))
-    return ret
+        stdout = stdout.decode()
+    except AttributeError:
+        # Stdout not captured
+        pass
+    try:
+        stderr = stderr.decode()
+    except AttributeError:
+        # Stderr not captured
+        pass
+
+    return stdout, stderr
 
 
-def tpe_submit_commands(kwargs, mpileups, thread_count, logger, shell_var=True):
+def tpe_submit_commands(run_args, mpileups: List[str], thread_count: int):
     """run commands on number of threads"""
     with ThreadPoolExecutor(max_workers=thread_count) as e:
-        for p in mpileups:
-            e.submit(
-                partial(somaticsniper, kwargs, logger=logger, shell_var=shell_var),
-                p,
-            )
+        for region_mpileup in mpileups:
+            # Build samtools view commands
+            # Build somatic sniper command
+            e.submit(multithread_somaticsniper, run_args, region_mpileup)
 
 
-def get_region(mpileup):
-    """ger region from mpileup filename"""
-    namebase = os.path.basename(mpileup)
-    base, _ = os.path.splitext(namebase)
+def multithread_somaticsniper(run_args, region: str):
+    # with tempdir
+    # normal bam region view
+    # tumor bam region view
+    # somatic sniper call
+    # snpfilter
+    # high confidence
+    # annotate output
+    normal_bam_view = samtools_command(run_args.normal_bam, region_mpileup)
+    tumor_bam_view = samtools_command(run_args.tumor_bam, region_mpileup)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        normal_bam_view_file_name = "{region}.normal.bam".format(region)
+        normal_bam_view_file_path = os.path.join(tmpdir, normal_bam_view_file_name)
+
+        tumor_bam_view_file_name = "{region}.tumor.bam".format(region)
+        tumor_bam_view_file_path = os.path.join(tmpdir, tumor_bam_view_file_name)
+
+        with open(normal_bam_view_file_path, 'w') as norm:
+            run_subprocess_command(normal_bam_view, stdout=norm)
+        with open(tumor_bam_view_file_path, 'w') as tum:
+            run_subprocess_command(normal_bam_view, stdout=tum)
+
+        base = get_region_from_name(region)
+        output_vcf_file = "{base}.vcf".format(base=base)
+        somatic_sniper_command = COMMANDS.somatic_sniper.format(
+            somaticsniper_binary=run_args.somaticsniper_bin,
+            map_q=run_args.map_q,
+            base_q=run_args.base_q,
+            pps=run_args.pps,
+            theta=run_args.theta,
+            nhap=run_args.nhap,
+            pd=run_args.pd,
+            fout=run_args.fout,
+            extra_args=run_args.flags,
+            reference_path=run_args.reference_path,
+            tumor_bam=tumor_bam_view_file_path,
+            normal_bam=normal_bam_view_file_path,
+            output_file=output_vcf_file,
+        )
+        stdout, stderr = run_subprocess_command(
+            somatic_sniper_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+
+def get_region_from_name(base: str):
+    """Get region from mpileup filename
+    e.g. chr1-1-248956422.mpileup
+    """
+    basename = os.path.basename(file_path)
+    base, _ = os.path.splitext(basename)
     region = base.replace("-", ":", 1)
     return region, base
 
@@ -128,10 +193,7 @@ def annotate_filter(raw, post_filter, new):
         writer.close()
 
 
-def somaticsniper(dct, mpileup, logger, shell_var=True):
-    """run somaticsniper workflow"""
-    region, output_base = get_region(mpileup)
-    output = output_base + ".vcf"
+def somatic_sniper_command(region, run_args):
     calling_cmd = [
         "bam-somaticsniper",
         "-q",
@@ -162,53 +224,66 @@ def somaticsniper(dct, mpileup, logger, shell_var=True):
         dct["reference_path"],
         "<(samtools view -b {} {})".format(dct["tumor_bam"], region),
         "<(samtools view -b {} {})".format(dct["normal_bam"], region),
-        output,
+        output_vcf_file,
     ]
+
+
+def samtools_command(bam_path: str, mpileup_file: str) -> str:
+    region = get_region_from_name(mpileup_file)
+    return COMMANDS.samtools.format(bam_path=bam_path, region=region)
+
+
+def snpfilter_command():
+    loh_filter_cmd = [
+        "perl",
+        "/opt/somatic-sniper-1.0.5.0/src/scripts/snpfilter.pl",
+        "--snp-file",
+        output_vcf_file,
+        "--indel-file",
+        mpileup,
+    ]
+    loh_output = "{}.SNPfilter".format(output_vcf_file)
+
+
+def highconfidence_command():
+    hc_filter_cmd = [
+        "perl",
+        "/opt/somatic-sniper-1.0.5.0/src/scripts/highconfidence.pl",
+        "--snp-file",
+        loh_output,
+    ]
+
+
+def somaticsniper(dct, mpileup, logger, shell_var=True):
+    """run somaticsniper workflow"""
+
+    # Open tempdir and output view files
+    # 1. Perform samtools view on tumor bam given mpileup region
+    # 2. Perform samtools view on normal bam given mpileup region
+
+    output_base = get_file_basename(mpileup)
+    region = get_region_from_name(output_base)
+
+    output_vcf_file = "{base}.vcf".format(base=output_base)
+
     logger.info("SomaticSniper Args: %s", " ".join(calling_cmd))
     calling_output = subprocess_commands_pipe(
         " ".join(calling_cmd), logger, shell_var=shell_var
     )
     if calling_output != 0:
         logger.error("Failed on SomaticSniper calling")
-    else:
-        loh_filter_cmd = [
-            "perl",
-            "/opt/somatic-sniper-1.0.5.0/src/scripts/snpfilter.pl",
-            "--snp-file",
-            output,
-            "--indel-file",
-            mpileup,
-        ]
-        loh_output = output + ".SNPfilter"
-        logger.info("LOH filtering Args: %s", " ".join(loh_filter_cmd))
-        loh_cmd_output = subprocess_commands_pipe(
-            " ".join(loh_filter_cmd), logger, shell_var=shell_var
-        )
-        if loh_cmd_output != 0:
-            logger.error("Failed on LOH filtering")
-        else:
-            hc_filter_cmd = [
-                "perl",
-                "/opt/somatic-sniper-1.0.5.0/src/scripts/highconfidence.pl",
-                "--snp-file",
-                loh_output,
-            ]
-            hc_output = loh_output + ".hc"
-            logger.info("High confidence filtering Args: %s", " ".join(hc_filter_cmd))
-            hc_cmd_output = subprocess_commands_pipe(
-                " ".join(hc_filter_cmd), logger, shell_var=shell_var
-            )
-            if hc_cmd_output != 0:
-                logger.error("Failed on HC filtering")
-            else:
-                annotated_vcf = output_base + ".annotated.vcf"
-                try:
-                    logger.info("Annotating raw VCF: %s", output)
-                    annotate_filter(output, hc_output, annotated_vcf)
-                except BaseException as err:
-                    logger.error("Annotation failed")
-                    logger.exception("Command Error: %s", err)
-                    sys.exit(1)
+    loh_output = "{}.SNPfilter".format(output_vcf_file)
+    logger.info("LOH filtering Args: %s", " ".join(loh_filter_cmd))
+    loh_cmd_output = subprocess_commands_pipe(
+        " ".join(loh_filter_cmd), logger, shell_var=shell_var
+    )
+    hc_output = loh_output + ".hc"
+    hc_cmd_output = subprocess_commands_pipe(
+        " ".join(hc_filter_cmd), logger, shell_var=shell_var
+    )
+
+    annotated_vcf = output_base + ".annotated.vcf"
+    annotate_filter(output_vcf_file, hc_output, annotated_vcf)
 
 
 def merge_outputs(output_list, merged_file):
@@ -230,40 +305,18 @@ def get_file_size(filename):
     return fstats.st_size
 
 
-def get_args():
+def setup_parser() -> argparse.ArgumentParser:
     """
     Loads the parser.
     """
     # Main parser
-    parser = argparse.ArgumentParser("Internal multithreading SomaticSniper calling.")
+    parser = argparse.ArgumentParser()
     # Required flags.
+
     parser.add_argument(
-        "-f",
-        "--reference_path",
-        required=True,
-        help="Reference path."
+        "--thread-count", type=int, required=True, help="Number of threads."
     )
     parser.add_argument(
-        "-t",
-        "--tumor_bam",
-        required=True,
-        help="Tumor bam file."
-    )
-    parser.add_argument(
-        "-n",
-        "--normal_bam",
-        required=True,
-        help="Normal bam file."
-    )
-    parser.add_argument(
-        "-c",
-        "--thread_count",
-        type=int,
-        required=True,
-        help="Number of thread."
-    )
-    parser.add_argument(
-        "-m",
         "--mpileup",
         action="append",
         required=True,
@@ -271,89 +324,131 @@ def get_args():
             Created by "samtools mpileup -f". The file name must contain region. \
             e.g. chr1-1-248956422.mpileup',
     )
-    # Optional flags.
-    parser.add_argument(
-        "-q",
-        "--map_q",
+
+    somatic_sniper_group = parser.add_argument_group(
+        "Required somaticsniper arguments."
+    )
+    somatic_sniper_group.add_argument(
+        "--reference-path", required=True, help="Reference path."
+    )
+    somatic_sniper_group.add_argument(
+        "--tumor-bam", required=True, help="Tumor bam file."
+    )
+    somatic_sniper_group.add_argument(
+        "--normal-bam", required=True, help="Normal bam file."
+    )
+
+    somatic_sniper_flags = parser.add_argument_group("Optional somaticsniper flags.")
+    somatic_sniper_flags.add_argument(
+        "--loh",
+        dest="flags",
+        action="append_const",
+        const="-L",
+        help="do not report LOH variants as determined by genotypes.",
+    )
+    somatic_sniper_flags.add_argument(
+        "--gor",
+        dest="flags",
+        action="append_const",
+        const="-G",
+        help="do not report Gain of Reference variants as determined by genotypes.",
+    )
+    somatic_sniper_flags.add_argument(
+        "--psc",
+        dest="flags",
+        action="append_const",
+        const='-p',
+        help="disable priors in the somatic calculation. \
+            Increases sensitivity for solid tumors.",
+    )
+    somatic_sniper_flags.add_argument(
+        "--ppa",
+        action="append_const",
+        const='-J',
+        help="Use prior probabilities accounting for the somatic mutation rate.",
+    )
+
+    somatic_sniper_optional_group = parser.add_argument_group(
+        "Optional somaticsniper kwargs"
+    )
+    somatic_sniper_optional_group.add_argument(
+        "--map-q",
         default=1,
         type=int,
         help="filtering reads with mapping quality less than this value.",
     )
-    parser.add_argument(
-        "-Q",
-        "--base_q",
+    somatic_sniper_optional_group.add_argument(
+        "--base-q",
         default=15,
         type=int,
         help="filtering somatic snv output with somatic quality less than this value.",
     )
-    parser.add_argument(
-        "-L",
-        "--loh",
-        action="store_true",
-        help="do not report LOH variants as determined by genotypes (T/F).",
-    )
-    parser.add_argument(
-        "-G",
-        "--gor",
-        action="store_true",
-        help="do not report Gain of Reference variants as determined by genotypes (T/F).",
-    )
-    parser.add_argument(
-        "-p",
-        "--psc",
-        action="store_true",
-        help="disable priors in the somatic calculation. \
-            Increases sensitivity for solid tumors (T/F).",
-    )
-    parser.add_argument(
-        "-J",
-        "--ppa",
-        action="store_true",
-        help="Use prior probabilities accounting for the somatic mutation rate (T/F).",
-    )
-    parser.add_argument(
-        "-s",
+    somatic_sniper_optional_group.add_argument(
         "--pps",
         default=0.01,
         type=float,
         help="prior probability of a somatic mutation (implies -J).",
     )
-    parser.add_argument(
-        "-T",
+    somatic_sniper_optional_group.add_argument(
         "--theta",
         default=0.85,
         type=float,
         help="theta in maq consensus calling model (for -c/-g).",
     )
-    parser.add_argument(
-        "-N",
-        "--nhap",
-        default=2,
-        type=int,
-        help="number of haplotypes in the sample."
+    somatic_sniper_optional_group.add_argument(
+        "--nhap", default=2, type=int, help="number of haplotypes in the sample."
     )
-    parser.add_argument(
-        "-r",
+    somatic_sniper_optional_group.add_argument(
         "--pd",
         default=0.001,
         type=float,
         help="prior of a difference between two haplotypes.",
     )
-    parser.add_argument(
-        "-F",
+    somatic_sniper_optional_group.add_argument(
         "--fout",
         default="vcf",
-        help="output format (classic/vcf/bed)."
+        choices=('classic', 'vcf', 'bed'),
+        help="output format (classic/vcf/bed).",
     )
-    return parser.parse_args()
+
+    runtime_group = parser.add_argument_group("Binaries")
+    runtime_group.add_argument(
+        "--somaticsniper",
+        dest="somaticsniper_bin",
+        default="bam-somaticsniper",
+        help="Path to bam-somaticsniper executable",
+    )
+    runtime_group.add_argument(
+        "--snpfilter",
+        default="/scripts/snpfilter.pl",
+        help="Path to snpfilter perl script",
+    )
+    runtime_group.add_argument(
+        "--highconfidence",
+        default="/scripts/highconfidence.pl",
+        help="Path to highconfidence perl script",
+    )
+
+    return parser
 
 
-def main(args, logger):
-    """main"""
-    logger.info("Running SomaticSniper 1.0.5.0")
-    kwargs = vars(args)
+def process_argv(argv: Optional[List] = None) -> namedtuple:
 
-    # Start Queue
+    parser = setup_parser()
+
+    if argv:
+        args, unknown_args = parser.parse_known_args(argv)
+    else:
+        args, unknown_args = parser.parse_known_args()
+
+    args_dict = vars(args)
+    args_dict['extras'] = unknown_args
+
+    run_args = namedtuple("RunArgs", list(args_dict.keys()))
+    return run_args(**args_dict)
+
+
+def run(run_args):
     tpe_submit_commands(kwargs, kwargs["mpileup"], kwargs["thread_count"], logger)
 
     # Check outputs
@@ -367,24 +462,31 @@ def main(args, logger):
     merge_outputs(vcfs, merged)
 
 
+def main(argv=None) -> int:
+    """main"""
+    exit_code = 0
+    setup_logger()
+
+    argv = argv or sys.argv
+    args = process_argv(argv)
+
+    try:
+        run(args)
+    except Exception as e:
+        logger.exception(e)
+        exit_code = 1
+
+    return exit_code
+
+
 if __name__ == "__main__":
-    # CLI Entrypoint.
-    start = time.time()
-    logger_ = setup_logger()
-    logger_.info("-" * 80)
-    logger_.info("multi_somaticsniper_p3.py")
-    logger_.info("Program Args: %s", " ".join(sys.argv))
-    logger_.info("-" * 80)
+    retcode = 0
 
-    args_ = get_args()
+    try:
+        retcode = main()
+    except Exception as e:
+        retcode = 1
+        logger.exception(e)
+    sys.exit(retcode)
 
-    # Process
-    logger_.info(
-        "Processing tumor and normal bam files %s, %s",
-        os.path.basename(args_.tumor_bam),
-        os.path.basename(args_.normal_bam),
-    )
-    main(args_, logger_)
-
-    # Done
-    logger_.info("Finished, took %s seconds", round(time.time() - start, 2))
+# __END
