@@ -1,5 +1,5 @@
 FROM quay.io/ncigdc/somatic-sniper:1.0.5.0 AS sniper
-FROM quay.io/ncigdc/samtools:1.1 AS samtools
+FROM quay.io/ncigdc/samtools:1.9 AS samtools
 
 MAINTAINER Charles Czysz <czysz@uchicago.edu>
 
