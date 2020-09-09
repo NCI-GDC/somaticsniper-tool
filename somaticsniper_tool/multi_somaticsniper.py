@@ -69,30 +69,6 @@ def setup_logger():
     return logger
 
 
-def run_subprocess_command(cmd: str, timeout: int = 3600, **kwargs):
-    """run pool commands"""
-
-    p = subprocess.Popen(shlex.split(cmd), **kwargs)
-    try:
-        stdout, stderr = p.communicate(timeout=timeout)
-    except TimeoutError:
-        p.kill()
-        stdout, stderr = p.communicate()
-
-    try:
-        stdout = stdout.decode()
-    except AttributeError:
-        # Stdout not captured
-        pass
-    try:
-        stderr = stderr.decode()
-    except AttributeError:
-        # Stderr not captured
-        pass
-
-    return stdout, stderr
-
-
 def tpe_submit_commands(run_args, mpileups: List[str], thread_count: int):
     """run commands on number of threads"""
     with ThreadPoolExecutor(max_workers=thread_count) as e:
@@ -144,16 +120,6 @@ def multithread_somaticsniper(run_args, region: str):
         stdout, stderr = run_subprocess_command(
             somatic_sniper_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-
-
-def get_region_from_name(base: str):
-    """Get region from mpileup filename
-    e.g. chr1-1-248956422.mpileup
-    """
-    basename = os.path.basename(file_path)
-    base, _ = os.path.splitext(basename)
-    region = base.replace("-", ":", 1)
-    return region, base
 
 
 def annotate_filter(raw, post_filter, new):
@@ -405,7 +371,7 @@ def setup_parser() -> argparse.ArgumentParser:
         help="prior of a difference between two haplotypes.",
     )
     somatic_sniper_optional_group.add_argument(
-        "--fout",
+        "--out-format",
         default="vcf",
         choices=('classic', 'vcf', 'bed'),
         help="output format (classic/vcf/bed).",
