@@ -16,13 +16,7 @@ class Test_SomaticSniper(ThisTestCase):
 
     def setUp(self):
         super().setUp()
-
-    def tearDown(self):
-        super().tearDown()
-
-    def test_setting_class_attributes_from_kwargs(self):
-
-        input_args = {
+        self.input_args = {
             "somaticsniper_bin": "foobar",
             'map_q': 12,
             'base_q': 4,
@@ -34,18 +28,53 @@ class Test_SomaticSniper(ThisTestCase):
             'flags': "[]",
             'reference_path': "/path/to/ref",
         }
-        for k in input_args.keys():
+
+    def tearDown(self):
+        super().tearDown()
+        for k in self.input_args.keys():
+            setattr(self.CLASS_OBJ, k, None)
+
+    def test_setting_class_attributes_from_kwargs(self):
+
+        for k in self.input_args.keys():
             with self.subTest(k=k):
                 self.assertEqual(getattr(self.CLASS_OBJ, k), None)
 
-        self.CLASS_OBJ._initialize_args(**input_args)
+        self.CLASS_OBJ._initialize_args(**self.input_args)
 
-        for k, v in input_args.items():
+        for k, v in self.input_args.items():
             with self.subTest(k=k):
                 self.assertEqual(getattr(self.CLASS_OBJ, k), v)
 
     def test_setting_class_attributes_from_namespace(self):
-        pass
+
+        input_namespace = SimpleNamespace(**self.input_args)
+        for k in self.input_args.keys():
+            with self.subTest(k=k):
+                self.assertEqual(getattr(self.CLASS_OBJ, k), None)
+
+        self.CLASS_OBJ._initialize_args(args=input_namespace)
+
+        for k, v in self.input_args.items():
+            with self.subTest(k=k):
+                self.assertEqual(getattr(self.CLASS_OBJ, k), v)
+
+    def test_setting_class_attributes_from_namespace_and_kwarg(self):
+
+        input_namespace = SimpleNamespace(**self.input_args)
+        for k in self.input_args.keys():
+            with self.subTest(k=k):
+                self.assertEqual(getattr(self.CLASS_OBJ, k), None)
+        kwarg_input = {'theta': 2.7}
+
+        self.CLASS_OBJ._initialize_args(args=input_namespace, **kwarg_input)
+
+        for k, v in self.input_args.items():
+            with self.subTest(k=k):
+                if k == 'theta':
+                    self.assertEqual(getattr(self.CLASS_OBJ, k), kwarg_input[k])
+                else:
+                    self.assertEqual(getattr(self.CLASS_OBJ, k), v)
 
 
 # __END__
