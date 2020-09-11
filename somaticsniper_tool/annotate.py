@@ -27,15 +27,19 @@ class Annotate:
         self.output_fh = self._di.open(self.output_file, 'w')
         return self
 
-    def __exit__(self):
+    def __exit__(self, type, value, traceback):
         self.output_fh.close()
 
     def annotate(self, raw_vcf: str, post_filter: str, _di=DI):
-        """Annotate post filter vcf"""
-        with open(raw_vcf, 'r') as vcf_fh, open(post_filter, 'r') as post_fh:
-            hc = set(vcf_fh).intersection(post_fh)
+        """Annotate somaticsniper VCF with high confident calls.
+        Accepts:
+            raw_vcf (str): Path to somatic sniper VCF
+            post_filter (str): Path to high confidence file
+        """
+        with _di.open(post_filter, 'r') as post_fh:
+            high_confident_lines = post_fh.readlines()
 
-        with open(raw_vcf, 'r') as vcf_fh:
+        with _di.open(raw_vcf, 'r') as vcf_fh:
             for line in vcf_fh:
                 if line.startswith("##reference"):
                     self.output_fh.write()
@@ -44,7 +48,7 @@ class Annotate:
                     self.output_fh.write("{}\n".format(Filter.LOH.value))
                 elif line.startswith("#"):
                     self.output_fh.write(line)
-                elif line in hc:
+                elif line in high_confident_lines:
                     entries = line.split("\t")
                     entries[6] = "LOH"
                     self.output_fh.output_fh.write('\t'.join(entries))
