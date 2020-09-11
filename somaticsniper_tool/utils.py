@@ -59,4 +59,17 @@ def run_subprocess_command(
     return PopenReturn(stdout=stdout, stderr=stderr)
 
 
+def merge_outputs(output_list, merged_file):
+    """Merge scattered outputs"""
+    first = True
+    with open(merged_file, "w") as oh:
+        for out in output_list:
+            with open(out) as fh:
+                for line in fh:
+                    if first or not line.startswith("#"):
+                        oh.write(line)
+            first = False
+    return merged_file
+
+
 # __END__
