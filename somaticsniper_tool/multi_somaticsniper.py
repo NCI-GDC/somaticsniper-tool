@@ -2,9 +2,11 @@
 Multithreading SomaticSniper
 
 @author: Shenglai Li
+@author: Charles Czysz
 """
 
 import argparse
+import concurrent.futures
 import logging
 import os
 import pathlib
@@ -14,46 +16,23 @@ import sys
 import tempfile
 import threading
 from collections import namedtuple
-from concurrent.futures import ThreadPoolExecutor
 from textwrap import dedent
 from types import SimpleNamespace
 from typing import List, Optional
 
+from somaticsniper_tool import utils
+from somaticsniper_tool._version import __pypi_version__
+from somaticsniper_tool.annotate import Annotate
+from somaticsniper_tool.high_confidence import HighConfidence
+from somaticsniper_tool.samtools import SamtoolsView
+from somaticsniper_tool.snp_filter import SnpFilter
+from somaticsniper_tool.somatic_sniper import SomaticSniper
+
 logger = logging.getLogger(__name__)
 
-COMMANDS = SimpleNamespace(
-    highconfidence=dedent(
-        """
-        perl {highconfidence}
-        --snp-file {loh_output}
-        """
-    ).strip(),
-    samtools="samtools view -b {bam_path} {region}",
-    somatic_sniper=dedent(
-        """
-        {somaticsniper_binary}
-        -q {map_q}
-        -Q {base_q}
-        -s {pps}
-        -T {theta}
-        -N {nhap}
-        -r {pd}
-        -F {fout}
-        {extra_args}
-        -f {reference_path}
-        {tumor_bam}
-        {normal_bam}
-        {output_file}
-        """
-    ).strip(),
-    snpfilter=dedent(
-        """
-        perl {snpfilter}
-        --snp-file {output_vcf_file}
-        --indel-file {indel_file}
-        """
-    ).strip(),
-)
+__version__ = __pypi_version__
+
+DI = SimpleNamespace(futures=concurrent.futures)
 
 
 def setup_logger():
@@ -67,208 +46,6 @@ def setup_logger():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     return logger
-
-
-def tpe_submit_commands(run_args, mpileups: List[str], thread_count: int):
-    """run commands on number of threads"""
-    with ThreadPoolExecutor(max_workers=thread_count) as e:
-        for region_mpileup in mpileups:
-            # Build samtools view commands
-            # Build somatic sniper command
-            e.submit(multithread_somaticsniper, run_args, region_mpileup)
-
-
-def multithread_somaticsniper(run_args, region: str):
-    # with tempdir
-    # normal bam region view
-    # tumor bam region view
-    # somatic sniper call
-    # snpfilter
-    # high confidence
-    # annotate output
-    normal_bam_view = samtools_command(run_args.normal_bam, region_mpileup)
-    tumor_bam_view = samtools_command(run_args.tumor_bam, region_mpileup)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        normal_bam_view_file_name = "{region}.normal.bam".format(region)
-        normal_bam_view_file_path = os.path.join(tmpdir, normal_bam_view_file_name)
-
-        tumor_bam_view_file_name = "{region}.tumor.bam".format(region)
-        tumor_bam_view_file_path = os.path.join(tmpdir, tumor_bam_view_file_name)
-
-        with open(normal_bam_view_file_path, 'w') as norm:
-            run_subprocess_command(normal_bam_view, stdout=norm)
-        with open(tumor_bam_view_file_path, 'w') as tum:
-            run_subprocess_command(normal_bam_view, stdout=tum)
-
-        base = get_region_from_name(region)
-        output_vcf_file = "{base}.vcf".format(base=base)
-        somatic_sniper_command = COMMANDS.somatic_sniper.format(
-            somaticsniper_binary=run_args.somaticsniper_bin,
-            map_q=run_args.map_q,
-            base_q=run_args.base_q,
-            pps=run_args.pps,
-            theta=run_args.theta,
-            nhap=run_args.nhap,
-            pd=run_args.pd,
-            fout=run_args.fout,
-            extra_args=run_args.flags,
-            reference_path=run_args.reference_path,
-            tumor_bam=tumor_bam_view_file_path,
-            normal_bam=normal_bam_view_file_path,
-            output_file=output_vcf_file,
-        )
-        stdout, stderr = run_subprocess_command(
-            somatic_sniper_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-
-
-def annotate_filter(raw, post_filter, new):
-    """Annotate post filter vcf"""
-    filter_pass = (
-        '##FILTER=<ID=PASS,Description="Accept as a high confident somatic mutation">'
-    )
-    filter_reject = (
-        '##FILTER=<ID=REJECT,Description="Rejected as an unconfident somatic mutation">'
-    )
-    filter_loh = '##FILTER=<ID=LOH,Description="Rejected as a loss of heterozygosity">'
-    writer = open(new, "w")
-    r = open(raw)
-    filtered = open(post_filter)
-    hc = set(r).intersection(filtered)
-    r.close()
-    filtered.close()
-    try:
-        with open(raw) as f:
-            for line in f:
-                if line.startswith("##reference"):
-                    writer.write(line)
-                    writer.write("{}\n".format(filter_pass))
-                    writer.write("{}\n".format(filter_reject))
-                    writer.write("{}\n".format(filter_loh))
-                elif line.startswith("#"):
-                    writer.write(line)
-                elif line in hc:
-                    new = line.split("\t")
-                    new[6] = "LOH"
-                    writer.write("\t".join(new))
-                else:
-                    new = line.split("\t")
-                    new[6] = "REJECT"
-                    writer.write("\t".join(new))
-    finally:
-        writer.close()
-
-
-def somatic_sniper_command(region, run_args):
-    calling_cmd = [
-        "bam-somaticsniper",
-        "-q",
-        str(dct["map_q"]),
-        "-Q",
-        str(dct["base_q"]),
-        "-s",
-        str(dct["pps"]),
-        "-T",
-        str(dct["theta"]),
-        "-N",
-        str(dct["nhap"]),
-        "-r",
-        str(dct["pd"]),
-        "-F",
-        str(dct["fout"]),
-    ]
-    if dct["loh"]:
-        calling_cmd += ["-L"]
-    if dct["gor"]:
-        calling_cmd += ["-G"]
-    if dct["psc"]:
-        calling_cmd += ["-p"]
-    if dct["ppa"]:
-        calling_cmd += ["-J"]
-    calling_cmd += [
-        "-f",
-        dct["reference_path"],
-        "<(samtools view -b {} {})".format(dct["tumor_bam"], region),
-        "<(samtools view -b {} {})".format(dct["normal_bam"], region),
-        output_vcf_file,
-    ]
-
-
-def samtools_command(bam_path: str, mpileup_file: str) -> str:
-    region = get_region_from_name(mpileup_file)
-    return COMMANDS.samtools.format(bam_path=bam_path, region=region)
-
-
-def snpfilter_command():
-    loh_filter_cmd = [
-        "perl",
-        "/opt/somatic-sniper-1.0.5.0/src/scripts/snpfilter.pl",
-        "--snp-file",
-        output_vcf_file,
-        "--indel-file",
-        mpileup,
-    ]
-    loh_output = "{}.SNPfilter".format(output_vcf_file)
-
-
-def highconfidence_command():
-    hc_filter_cmd = [
-        "perl",
-        "/opt/somatic-sniper-1.0.5.0/src/scripts/highconfidence.pl",
-        "--snp-file",
-        loh_output,
-    ]
-
-
-def somaticsniper(dct, mpileup, logger, shell_var=True):
-    """run somaticsniper workflow"""
-
-    # Open tempdir and output view files
-    # 1. Perform samtools view on tumor bam given mpileup region
-    # 2. Perform samtools view on normal bam given mpileup region
-
-    output_base = get_file_basename(mpileup)
-    region = get_region_from_name(output_base)
-
-    output_vcf_file = "{base}.vcf".format(base=output_base)
-
-    logger.info("SomaticSniper Args: %s", " ".join(calling_cmd))
-    calling_output = subprocess_commands_pipe(
-        " ".join(calling_cmd), logger, shell_var=shell_var
-    )
-    if calling_output != 0:
-        logger.error("Failed on SomaticSniper calling")
-    loh_output = "{}.SNPfilter".format(output_vcf_file)
-    logger.info("LOH filtering Args: %s", " ".join(loh_filter_cmd))
-    loh_cmd_output = subprocess_commands_pipe(
-        " ".join(loh_filter_cmd), logger, shell_var=shell_var
-    )
-    hc_output = loh_output + ".hc"
-    hc_cmd_output = subprocess_commands_pipe(
-        " ".join(hc_filter_cmd), logger, shell_var=shell_var
-    )
-
-    annotated_vcf = output_base + ".annotated.vcf"
-    annotate_filter(output_vcf_file, hc_output, annotated_vcf)
-
-
-def merge_outputs(output_list, merged_file):
-    """Merge scattered outputs"""
-    first = True
-    with open(merged_file, "w") as oh:
-        for out in output_list:
-            with open(out) as fh:
-                for line in fh:
-                    if first or not line.startswith("#"):
-                        oh.write(line)
-            first = False
-    return merged_file
-
-
-def get_file_size(filename):
-    """ Gets file size """
-    fstats = os.stat(filename)
-    return fstats.st_size
 
 
 def setup_parser() -> argparse.ArgumentParser:
@@ -394,6 +171,9 @@ def setup_parser() -> argparse.ArgumentParser:
         default="/scripts/highconfidence.pl",
         help="Path to highconfidence perl script",
     )
+    parser.add_argument(
+        "--version", action='version', version=__version__,
+    )
 
     return parser
 
@@ -414,18 +194,74 @@ def process_argv(argv: Optional[List] = None) -> namedtuple:
     return run_args(**args_dict)
 
 
-def run(run_args):
-    tpe_submit_commands(kwargs, kwargs["mpileup"], kwargs["thread_count"], logger)
+def tpe_submit_commands(run_args, _di=DI):
+    """run commands on number of threads"""
+    mpileups = run_args.mpileup
+    with _di.futures.ThreadPoolExecutor(max_workers=run_args.thread_count) as executor:
+        futures = [
+            executor.submit(multithread_somaticsniper, run_args, region_mpileup)
+            for region_mpileup in mpileups
+        ]
+        for future in _di.futures.as_completed(futures):
+            try:
+                result = future.result()
+                logger.info(result)
+            except Exception as e:
+                logger.exception(e)
 
-    # Check outputs
-    vcfs = glob.glob("*.annotated.vcf")
-    assert len(vcfs) == len(kwargs["mpileup"]), "Missing output!"
-    if any(get_file_size(x) == 0 for x in vcfs):
-        logger.error("Empty output detected!")
 
-    # Merge
-    merged = "multi_somaticsniper_merged.vcf"
-    merge_outputs(vcfs, merged)
+def multithread_somaticsniper(
+    run_args,
+    mpileup: str,
+    _annotate=Annotate,
+    _highconfidence=HighConfidence,
+    _samtools=SamtoolsView,
+    _somaticsniper=SomaticSniper,
+    _snpfilter=SnpFilter,
+    _utils=utils,
+) -> str:
+    """Run multithreaded somaticsniper workflow.
+    Accepts:
+        run_args (namespace): argparse namespace
+        mpileup (str): Path to mpileup file
+    Returns:
+        annotated_vcf_file (str): Path to annotated vcf
+    """
+
+    region = _utils.get_region_from_name(mpileup)
+
+    somatic_sniper = _somaticsniper(region)
+    with _samtools(run_args.normal_bam, region) as normal_view, _samtools(
+        run_args.tumor_bam, region
+    ) as tumor_view:
+        somatic_sniper_vcf = somatic_sniper.run(
+            normal_bam=normal_view, tumor_bam=tumor_view
+        )
+
+    snp_filter_output = "{}.SNPfilter".format(somatic_sniper_vcf)
+    snp_filter = _snpfilter(run_args.snpfilter, somatic_sniper_vcf, mpileup)
+    snp_filter.run()
+
+    high_confidence_output = "{}.hc".format(snp_filter_output)
+    high_confidence = _highconfidence(run_args.highconfidence, snp_filter_output)
+
+    annotated_vcf_file = "{}.annotated.vcf".format(region)
+    with _annotate(annotated_vcf_file) as annotate:
+        annotate(somatic_sniper_vcf, high_confidence_output)
+
+    return annotated_vcf_file
+
+
+def run(run_args, _somaticsniper=SomaticSniper, _utils=utils):
+
+    # Update class attributes
+    _somaticsniper._initialize_args(args=run_args)
+
+    annotated_vcfs = tpe_submit_commands(run_args)
+
+    merged_output = "multi_somaticsniper_merged.vcf"
+    with open(merged_output, 'w') as out_fh:
+        _utils.merge_outputs(annotated_vcfs, out_fh)
 
 
 def main(argv=None) -> int:
