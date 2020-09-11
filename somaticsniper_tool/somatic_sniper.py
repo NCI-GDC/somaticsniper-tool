@@ -50,7 +50,14 @@ class SomaticSniper:
     def __init__(self, output: str):
         self.output_file = "{output}.vcf".format(output)
 
-    def run(self, normal_bam: str, tumor_bam: str, _utils=utils):
+    def run(self, normal_bam: str, tumor_bam: str, _utils=utils) -> str:
+        """Runs somatic sniper command.
+        Accepts:
+            normal_bam (str): Path to normal bam input
+            tumor_bam (str): Path to tumor bam input
+        Returns:
+            output_file (str): Path to somaticsniper output file
+        """
         cmd = self.COMMAND.format(
             somaticsniper_bin=self.somaticsniper_bin,
             map_q=self.map_q,
