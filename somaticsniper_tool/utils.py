@@ -4,9 +4,9 @@ import os
 import shlex
 import subprocess
 from types import SimpleNamespace
-from typing import NamedTuple, Optional
+from typing import IO, List, NamedTuple, Optional
 
-DI = SimpleNamespace(os=os, subprocess=subprocess,)
+DI = SimpleNamespace(open=open, os=os, subprocess=subprocess)
 
 
 class PopenReturn(NamedTuple):
@@ -32,7 +32,14 @@ def get_region_from_name(file_path: str, _di=DI) -> str:
 def run_subprocess_command(
     cmd: str, timeout: int = 3600, _di=DI, **kwargs
 ) -> PopenReturn:
-    """run pool commands"""
+    """Run command via Popen.
+    Accepts:
+        cmd (str): Command-string to run
+        timeout (int): Max seconds to wait for command
+        kwargs (dict): Additional arguments to Popen
+    Returns:
+        PopenReturn: NamedTuple with stdout and stderr attributes
+    """
 
     if kwargs.get("shell", False):
         # Do not split command for shell
@@ -41,7 +48,7 @@ def run_subprocess_command(
         p = _di.subprocess.Popen(shlex.split(cmd), **kwargs)
     try:
         stdout, stderr = p.communicate(timeout=timeout)
-    except TimeoutError:
+    except subprocess.TimeoutExpired:
         p.kill()
         stdout, stderr = p.communicate()
 
@@ -59,17 +66,19 @@ def run_subprocess_command(
     return PopenReturn(stdout=stdout, stderr=stderr)
 
 
-def merge_outputs(output_list, merged_file):
-    """Merge scattered outputs"""
+def merge_outputs(files: List[str], merged_file: IO, _di=DI):
+    """Add non-comment lines from list of files to output file.
+    Accepts:
+        files: List of file paths
+        merged_file (IO): File handler of output file
+    """
     first = True
-    with open(merged_file, "w") as oh:
-        for out in output_list:
-            with open(out) as fh:
-                for line in fh:
-                    if first or not line.startswith("#"):
-                        oh.write(line)
-            first = False
-    return merged_file
+    for out in files:
+        with _di.open(out) as fh:
+            for line in fh:
+                if first or not line.startswith("#"):
+                    merged_file.write(line)
+        first = False
 
 
 # __END__
