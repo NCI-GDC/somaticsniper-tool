@@ -87,6 +87,24 @@ class Test_run_subprocess_command(ThisTestCase):
         self.assertEqual(found.stdout, stdout.decode())
         self.assertEqual(found.stderr, stderr.decode())
 
+    def test_returns_None_when_communicate_returns_None(self):
+        cmd_str = "ls /foo/bar"
+        expected = MOD.PopenReturn(stdout=None, stderr=None)
+        mock_popen = mock.MagicMock(spec_set=MOD.subprocess.Popen)
+        mock_popen.communicate.return_value = (None, None)
+        self.mocks.subprocess.Popen.return_value = mock_popen
+        found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        self.assertEqual(expected, found)
+
+    def test_returns_str_when_communicate_returns_str(self):
+        cmd_str = "ls /foo/bar"
+        expected = MOD.PopenReturn(stdout="foo", stderr="bar")
+        mock_popen = mock.MagicMock(spec_set=MOD.subprocess.Popen)
+        mock_popen.communicate.return_value = ("foo", "bar")
+        self.mocks.subprocess.Popen.return_value = mock_popen
+        found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        self.assertEqual(expected, found)
+
 
 class Test_merge_outputs(ThisTestCase):
     def setUp(self):
