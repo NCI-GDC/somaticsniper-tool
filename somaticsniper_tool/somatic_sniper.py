@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+from subprocess import PIPE
 from textwrap import dedent
 from types import SimpleNamespace
 from typing import List
@@ -69,9 +70,7 @@ class SomaticSniper:
             normal_bam=normal_bam,
             output_file=self.output_file,
         )
-        popen_return = _utils.run_subprocess_command(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
+        popen_return = _utils.run_subprocess_command(cmd, stdout=PIPE, stderr=PIPE)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
         return self.output_file
