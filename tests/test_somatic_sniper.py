@@ -2,6 +2,7 @@
 
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import somaticsniper_tool.somatic_sniper as MOD
 
@@ -25,9 +26,10 @@ class Test_SomaticSniper(ThisTestCase):
             'nhap': 0.45,
             'pd': 7,
             'out_format': "baz",
-            'flags': "[]",
+            'flags': ["foo", "bar"],
             'reference_path': "/path/to/ref",
         }
+        self.mocks = SimpleNamespace(UTILS=mock.MagicMock(spec_set=MOD.utils))
 
     def tearDown(self):
         super().tearDown()
@@ -75,6 +77,33 @@ class Test_SomaticSniper(ThisTestCase):
                     self.assertEqual(getattr(self.CLASS_OBJ, k), kwarg_input[k])
                 else:
                     self.assertEqual(getattr(self.CLASS_OBJ, k), v)
+
+    def test_init_sets_attributes(self):
+        output = "output"
+        expected = "{}.vcf".format(output)
+        obj = self.CLASS_OBJ(output)
+        self.assertEqual(expected, obj.output_file)
+
+    def test_run_builds_command_as_expected(self):
+        self.CLASS_OBJ._initialize_args(**self.input_args)
+        output = "output"
+        obj = self.CLASS_OBJ(output)
+        args = self.input_args.copy()
+        args['extra_args'] = ",".join(args.pop('flags'))
+        normal_bam = "normal.bam"
+        tumor_bam = "tumor.bam"
+        expected_cmd = self.CLASS_OBJ.COMMAND.format(
+            normal_bam=normal_bam,
+            tumor_bam=tumor_bam,
+            output_file="{}.vcf".format(output),
+            **args,
+        )
+        subprocess_return = MOD.utils.PopenReturn(stdout='foo', stderr='bar')
+        self.mocks.UTILS.run_subprocess_command.return_value = subprocess_return
+        output_file = obj.run(normal_bam, tumor_bam, _utils=self.mocks.UTILS)
+        self.mocks.UTILS.run_subprocess_command.assert_called_once_with(
+            expected_cmd, stdout=MOD.subprocess.PIPE, stderr=MOD.subprocess.PIPE
+        )
 
 
 # __END__
