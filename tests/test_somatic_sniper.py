@@ -102,7 +102,7 @@ class Test_SomaticSniper(ThisTestCase):
         self.mocks.UTILS.run_subprocess_command.return_value = subprocess_return
         output_file = obj.run(normal_bam, tumor_bam, _utils=self.mocks.UTILS)
         self.mocks.UTILS.run_subprocess_command.assert_called_once_with(
-            expected_cmd, stdout=MOD.subprocess.PIPE, stderr=MOD.subprocess.PIPE
+            expected_cmd, stdout=MOD.PIPE, stderr=MOD.PIPE
         )
 
 
