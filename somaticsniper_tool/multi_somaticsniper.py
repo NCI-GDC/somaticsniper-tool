@@ -18,7 +18,7 @@ import threading
 from collections import namedtuple
 from textwrap import dedent
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from somaticsniper_tool import utils
 from somaticsniper_tool._version import __pypi_version__
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 __version__ = __pypi_version__
 
-DI = SimpleNamespace(futures=concurrent.futures)
+DI = SimpleNamespace(futures=concurrent.futures, open=open, os=os,)
 
 
 def setup_logger():
@@ -194,25 +194,12 @@ def process_argv(argv: Optional[List] = None) -> namedtuple:
     return run_args(**args_dict)
 
 
-def tpe_submit_commands(run_args, _di=DI):
-    """run commands on number of threads"""
-    mpileups = run_args.mpileup
-    with _di.futures.ThreadPoolExecutor(max_workers=run_args.thread_count) as executor:
-        futures = [
-            executor.submit(multithread_somaticsniper, run_args, region_mpileup)
-            for region_mpileup in mpileups
-        ]
-        for future in _di.futures.as_completed(futures):
-            try:
-                result = future.result()
-                logger.info(result)
-            except Exception as e:
-                logger.exception(e)
-
-
 def multithread_somaticsniper(
-    run_args,
     mpileup: str,
+    normal_bam: str = None,
+    tumor_bam: str = None,
+    snpfilter: str = None,
+    high_confidence: str = None,
     _annotate=Annotate,
     _highconfidence=HighConfidence,
     _samtools=SamtoolsView,
@@ -231,25 +218,56 @@ def multithread_somaticsniper(
     region = _utils.get_region_from_name(mpileup)
 
     somatic_sniper = _somaticsniper(region)
-    with _samtools(run_args.normal_bam, region) as normal_view, _samtools(
-        run_args.tumor_bam, region
+    with _samtools(normal_bam, region) as normal_view, _samtools(
+        tumor_bam, region
     ) as tumor_view:
         somatic_sniper_vcf = somatic_sniper.run(
             normal_bam=normal_view, tumor_bam=tumor_view
         )
 
     snp_filter_output = "{}.SNPfilter".format(somatic_sniper_vcf)
-    snp_filter = _snpfilter(run_args.snpfilter, somatic_sniper_vcf, mpileup)
+    snp_filter = _snpfilter(snpfilter, somatic_sniper_vcf, mpileup)
     snp_filter.run()
 
     high_confidence_output = "{}.hc".format(snp_filter_output)
-    high_confidence = _highconfidence(run_args.highconfidence, snp_filter_output)
+    high_confidence = _highconfidence(high_confidence, snp_filter_output)
+    high_confidence.run()
 
     annotated_vcf_file = "{}.annotated.vcf".format(region)
     with _annotate(annotated_vcf_file) as annotate:
         annotate(somatic_sniper_vcf, high_confidence_output)
 
     return annotated_vcf_file
+
+
+def tpe_submit_commands(
+    run_args, fn: Callable = multithread_somaticsniper, _di=DI
+) -> List[str]:
+    """run commands on number of threads
+    Accepts:
+    Returns:
+    """
+    mpileups = run_args.mpileup
+    annotated_vcfs = []
+    with _di.futures.ThreadPoolExecutor(max_workers=run_args.thread_count) as executor:
+        futures = [
+            executor.submit(
+                fn,
+                region_mpileup,
+                normal_bam=run_args.normal_bam,
+                tumor_bam=run_args.tumor_bam,
+                snpfilter=run_args.snpfilter,
+                high_confidence=run_args.highconfidence,
+            )
+            for region_mpileup in mpileups
+        ]
+        for future in _di.futures.as_completed(futures):
+            try:
+                result = future.result()
+                logger.info(result)
+                annotated_vcfs.append(result)
+            except Exception as e:
+                logger.exception(e)
 
 
 def run(run_args, _somaticsniper=SomaticSniper, _utils=utils):
