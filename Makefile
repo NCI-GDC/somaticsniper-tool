@@ -90,6 +90,7 @@ build-docker: docker-login
 	cp -f Makefile requirements.txt README.md setup.py dist/
 	docker build . \
 		--file ./Dockerfile \
+		--no-cache \
 		-t "${DOCKER_IMAGE_COMMIT}" \
 		-t "${DOCKER_IMAGE}" \
 		-t "${DOCKER_IMAGE_LATEST}"
@@ -107,14 +108,15 @@ test-docker:
 	@echo -- Running Docker Test --
 	docker run --rm ${DOCKER_IMAGE_LATEST} ${MODULE} test
 
-.PHONY: publish-*
-
-publish-staging: docker-login
-	docker tag ${DOCKER_IMAGE_LATEST} ${DOCKER_IMAGE_STAGING}
+.PHONY: publish publish-*
+publish: docker-login
 	docker push ${DOCKER_IMAGE_COMMIT}
+
+publish-staging: publish
+	docker tag ${DOCKER_IMAGE_LATEST} ${DOCKER_IMAGE_STAGING}
 	docker push ${DOCKER_IMAGE_STAGING}
 	docker push ${DOCKER_IMAGE}
 
-publish-release: docker-login
+publish-release: publish
 	docker tag ${DOCKER_IMAGE_LATEST} ${DOCKER_IMAGE_RELEASE}
 	docker push ${DOCKER_IMAGE_RELEASE}
