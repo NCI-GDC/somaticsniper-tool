@@ -106,7 +106,7 @@ test-unit:
 test-docker:
 	@echo
 	@echo -- Running Docker Test --
-	docker run --rm ${DOCKER_IMAGE_LATEST} ${MODULE} test
+	docker run --rm ${DOCKER_IMAGE_LATEST} test
 
 .PHONY: publish publish-*
 publish: docker-login
