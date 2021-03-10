@@ -4,6 +4,6 @@ set -eo pipefail
 
 case "$1" in
 	test) python -m pytest tests;;
-	*version) python -m somaticsniper_tool --version;;
-	*) python -m somaticsniper_tool $@;;
+	*version) python -m somaticsniper_tool.multi_somaticsniper --version;;
+	*) python -m somaticsniper_tool.multi_somaticsniper $@;;
 esac
