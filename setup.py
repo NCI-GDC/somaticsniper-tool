@@ -215,12 +215,6 @@ setup(
         "capture_version": CaptureVersion,
         "print_version": PrintVersion,
     },
-    entry_points={
-        "console_scripts": [
-            # "merge = muse_tool.merge_muse:main",
-            "multi_muse = muse_tool.multi_muse:main",
-        ]
-    },
     scripts=[os.path.join(os.path.dirname(__file__), 'bin', PACKAGE)],
 )
 
