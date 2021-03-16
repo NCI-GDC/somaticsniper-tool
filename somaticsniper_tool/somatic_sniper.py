@@ -90,7 +90,7 @@ class SomaticSniper:
             'flags',
             'reference_path',
         )
-        args_dict = vars(args) if args else {}
+        args_dict = args._asdict() if args else {}
         args_dict.update(kwargs)
 
         for attr in attrs:
