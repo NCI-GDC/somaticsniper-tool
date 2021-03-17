@@ -1,0 +1,33 @@
+language: python
+python:
+- '3.7'
+services: docker
+git:
+  depth: false
+install: make build
+stages:
+- name: test
+- name: publish-release
+  if: branch = master AND type != pull_request
+- name: publish-staging
+  if: branch != master AND type != pull_request
+jobs:
+  include:
+  - stage: test
+    name: Test Docker
+    script:
+    - make version version-pypi
+    - make test-docker
+  - stage: publish-staging
+    name: Publish staging image
+    script:
+    - make publish-staging
+  - stage: publish-release
+    name: Publish production image
+    script:
+    - make publish-release
+env:
+  global:
+  - BRANCH_NAME=${TRAVIS_PULL_REQUEST_BRANCH:-$TRAVIS_BRANCH}
+  - secure: Mz9b7JOuXBGtW0a5XKTbw4BY4svohR0NTwezHPceiRB54Y+yeoIO/gjct6wsoclQ2uLQ3UipeFdcl+FdCOzfni8F1ZqWtlLvhfIw0MjyBBWOlCEnRNaHLeX/0ZNj7Vqtlj4+Wn8uqvDF/sA2v5rWZFFxHddf/6IvAMVc4w/NtTRKRlJ5HCm/SS5WGCo/Cf6W6vsJ7KgJk66+2RcDVRk468qAOjPIIB1aDbxB5xICzSJbINnQtOZZjJRkOSj+KK5QG8PVgMUbp68szI9AO4j6k8Qw0sysHdKDbkiiaYEMODvFOMT2z2rX0zD+K5Y6xHUNRaxkb0ODWlFTLIhr3+mHWIw6Vvi10ORa3JwxWpFT1Yau0WAArCmt4LTr8h29izsVGRbABFLRz+ZCZXYSq7mxrKv6xvy18OgDTi9Fl4ccEwSd7sLRi9Pdef7UmYPMe2t97QVoo05s6m2wTRdkZ/3lYOtYicrpw9CNZYDrMmbm3IXTT3wzWGwdkRb9bitUXVAvaTOP7c3V86NtR13t0JKQn7oBEMuhywu046/eP963N9jKwwGviWgnEWRWwhU/IBQziXVp0sG0TnUQM3XPqJowBdgymWA7d/xfS7Luu81K7z8mM+kHTnsENISYtvQ5q0ocDlveAESVEmStVH4u+VPIg39tj2FZMh5aEN9XpYsNleA=
+  - secure: sx0FFLsDwHCfP2oxZpkHunH7hpdBsVOvt1RQSnp4sZNqL3OuTkdmeWAFHvG6EP1CavcQvVk/Zr7K5atk/CtZMyQr5fSFVJ/QhsPBye58zfA4JnLHY6Swird+FmhIxNGB7ZxhzLvJ5niMcPi6Db8zhXFQAdFGQfTpnfH7M5fIxzxUrAJV0ODu/YTB7NqoUfKbFzDSM6INO7T3sdwVnuXw/XpQ2TL3xuVd5zs33ktZzRp1W9q1ZGue5LIRqqS+R28EbwpgnbvIvuSWSjR63WWG7vKWMxJgY+kkGCN+UjXMRo1IqGK83Iwxx6keGWNuUlc71Qdg8DF3Ms6lzmgV8FzyQnajOBpyGmt4KKJcBR4BbEJ51h0e5xh6WOJ6bizGI/gKAR5CXGIZO7dJ4S+QV4VZqJgcmlrzJvZ6nAzM84axhWMtG2bd9zsAD7pU78NJ8PEySDWu0kgd3DR1p1+EDDl2dDXy7aPar2Naq3cSsXFMW7xJEWxoDaGIiUV1MDMDzOlvXEc+IeOj0CY8XUrYZCR7owIvRpxb3nvk9eV5/VM+yUYcgx/Jovvphsi9TilzuesRhtvegalfmL5vSaLvCq/0d+kHJX5CJPWkcLD3bDOmM8bUSkgwdCWNr0r9AchslD/VHBbKOCaRtncISDzlXo79/z9wj/ZJxeBCoAP/EWSmV1Q=
