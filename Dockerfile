@@ -1,9 +1,9 @@
 FROM quay.io/ncigdc/samtools:1.1 AS samtools
-FROM python:3.7-slim
-
+FROM quay.io/ncigdc/python37 AS python
 MAINTAINER Charles Czysz <czysz@uchicago.edu>
 
 COPY --from=samtools / /
+COPY --from=python / /
 
 COPY ./dist/ /opt/
 WORKDIR /opt
@@ -14,8 +14,6 @@ ENV URL=https://github.com/genome/somatic-sniper/archive/v${VERSION}.tar.gz
 
 RUN apt-get update \
 	&& yes | apt-get install -y \
-		software-properties-common \
-	        build-essential \
 		gcc \
 		cmake \
 		make \
