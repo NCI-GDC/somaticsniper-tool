@@ -4,7 +4,7 @@ import logging
 from subprocess import PIPE
 from textwrap import dedent
 from types import SimpleNamespace
-from typing import List
+from typing import List, NamedTuple
 
 from somaticsniper_tool import utils
 
@@ -77,7 +77,7 @@ class SomaticSniper:
         return self.output_file
 
     @classmethod
-    def _initialize_args(cls, args: SimpleNamespace = None, **kwargs):
+    def _initialize_args(cls, args: NamedTuple = None, **kwargs):
         """Set class props from kwargs."""
         attrs = (
             'somaticsniper_bin',

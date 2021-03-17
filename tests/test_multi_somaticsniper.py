@@ -145,7 +145,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
             _snpfilter=self.mocks.SNPFILTER,
         )
 
-        self.mocks.SOMATICSNIPER.assert_called_once_with("chr1:2-3")
+        self.mocks.SOMATICSNIPER.assert_called_once_with("chr1-2-3")
 
     def test_samtools_views_called_with_expected_bams(self):
 
@@ -153,7 +153,8 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         self.mocks.SOMATICSNIPER.return_value = mock_somatic_sniper
 
         region = "chr1:2-3"
-        self.mocks.UTILS.get_region_from_name.return_value = region
+        basename = "chr1-2-3"
+        self.mocks.UTILS.get_region_from_name.return_value = region, basename
 
         found = MOD.multithread_somaticsniper(
             self.mpileup,
@@ -246,14 +247,15 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         mock_high_confidence.run.assert_called_once_with()
 
     def test_annotate_context_called_with_expected_args(self):
-        region = "foobar"
-        self.mocks.UTILS.get_region_from_name.return_value = region
+        region = "foo:bar"
+        basename = "foo-bar"
+        self.mocks.UTILS.get_region_from_name.return_value = region, basename
 
         out_vcf = "somatic_sniper.vcf"
         snpfilter_out = "{}.SNPfilter".format(out_vcf)
         high_confidence_out = "{}.hc".format(snpfilter_out)
 
-        annotated_file = "{}.annotated.vcf".format(region)
+        annotated_file = "{}.annotated.vcf".format(basename)
 
         self.mocks.SOMATICSNIPER.return_value.run.return_value = out_vcf
 
@@ -270,14 +272,15 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         self.mocks.ANNOTATE.assert_called_once_with(annotated_file)
 
     def test_annotate_instance_called_with_expected_args(self):
-        region = "foobar"
-        self.mocks.UTILS.get_region_from_name.return_value = region
+        region = "foo:bar"
+        basename = "foo-bar"
+        self.mocks.UTILS.get_region_from_name.return_value = region, basename
 
         out_vcf = "somatic_sniper.vcf"
         snpfilter_out = "{}.SNPfilter".format(out_vcf)
         high_confidence_out = "{}.hc".format(snpfilter_out)
 
-        annotated_file = "{}.annotated.vcf".format(region)
+        annotated_file = "{}.annotated.vcf".format(basename)
         self.mocks.SOMATICSNIPER.return_value.run.return_value = out_vcf
 
         mock_annotate = mock.MagicMock(spec_set=MOD.Annotate)
