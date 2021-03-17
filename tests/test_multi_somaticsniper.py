@@ -64,6 +64,7 @@ class Test_tpe_submit_commands(ThisTestCase):
     def setUp(self):
         super().setUp()
         self.args = dict(
+            samtools="samtools",
             normal_bam="/foo/bar/normal.bam",
             tumor_bam="/foo/bar/tumor.bam",
             snpfilter="snp_filter.pl",
@@ -97,6 +98,7 @@ class Test_tpe_submit_commands(ThisTestCase):
                 mock.call(
                     mock_fn,
                     region,
+                    samtools=self.run_args.samtools,
                     normal_bam=self.run_args.normal_bam,
                     tumor_bam=self.run_args.tumor_bam,
                     snpfilter=self.run_args.snpfilter,
@@ -113,6 +115,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         super().setUp()
 
         self.args = dict(
+            samtools="samtools",
             normal_bam="/foo/bar/normal.bam",
             tumor_bam="/foo/bar/tumor.bam",
             snpfilter="snp_filter.pl",
@@ -167,8 +170,8 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
             _utils=self.mocks.UTILS,
         )
         expected_calls = [
-            mock.call(self.args["normal_bam"], region),
-            mock.call(self.args["tumor_bam"], region),
+            mock.call(self.args["samtools"], self.args["normal_bam"], region),
+            mock.call(self.args["samtools"], self.args["tumor_bam"], region),
         ]
         self.mocks.SAMTOOLS.assert_has_calls(expected_calls, any_order=True)
 
