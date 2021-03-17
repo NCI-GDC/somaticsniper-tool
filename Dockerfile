@@ -1,6 +1,12 @@
+FROM quay.io/ncigdc/samtools:1.1 AS samtools
 FROM python:3.7-slim
 
 MAINTAINER Charles Czysz <czysz@uchicago.edu>
+
+COPY --from=samtools / /
+
+COPY ./dist/ /opt/
+WORKDIR /opt
 
 ARG VERSION="1.0.5.0"
 
@@ -33,10 +39,6 @@ RUN wget $URL \
 	&& rm -rf somatic-sniper-${VERSION} v${VERSION}.tar.gz
 
 ENV BINARY=somaticsniper_tool
-
-COPY dist/ /opt/
-
-WORKDIR /opt
 
 RUN make init-pip \
   && ln -s /opt/bin/${BINARY} /bin/${BINARY}

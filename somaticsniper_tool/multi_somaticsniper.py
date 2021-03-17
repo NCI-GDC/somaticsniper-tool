@@ -177,6 +177,9 @@ def setup_parser() -> argparse.ArgumentParser:
         default="/scripts/highconfidence.pl",
         help="Path to highconfidence perl script",
     )
+    runtime_group.add_argument(
+        "--samtools", default="/usr/local/bin/samtools", help="Path to samtools",
+    )
     parser.add_argument(
         "--version", action='version', version=__version__,
     )
@@ -202,6 +205,7 @@ def process_argv(argv: Optional[List] = None) -> namedtuple:
 
 def multithread_somaticsniper(
     mpileup: str,
+    samtools: str = None,
     normal_bam: str = None,
     tumor_bam: str = None,
     snpfilter: str = None,
@@ -224,8 +228,8 @@ def multithread_somaticsniper(
     region, basename = _utils.get_region_from_name(mpileup)
 
     somatic_sniper = _somaticsniper(basename)
-    with _samtools(normal_bam, region) as normal_view, _samtools(
-        tumor_bam, region
+    with _samtools(samtools, normal_bam, region) as normal_view, _samtools(
+        samtools, tumor_bam, region
     ) as tumor_view:
         somatic_sniper_vcf = somatic_sniper.run(
             normal_bam=normal_view, tumor_bam=tumor_view
@@ -255,11 +259,13 @@ def tpe_submit_commands(
     """
     mpileups = run_args.mpileup
     annotated_vcfs = []
+    exceptions = []
     with _di.futures.ThreadPoolExecutor(max_workers=run_args.thread_count) as executor:
         futures = [
             executor.submit(
                 fn,
                 region_mpileup,
+                samtools=run_args.samtools,
                 normal_bam=run_args.normal_bam,
                 tumor_bam=run_args.tumor_bam,
                 snpfilter=run_args.snpfilter,
@@ -273,8 +279,9 @@ def tpe_submit_commands(
                 logger.info(result)
                 annotated_vcfs.append(result)
             except Exception as e:
+                exceptions.append(e)
                 logger.exception(e)
-    return annotated_vcfs
+    return annotated_vcfs, exceptions
 
 
 def run(run_args, _somaticsniper=SomaticSniper, _utils=utils):
@@ -282,7 +289,11 @@ def run(run_args, _somaticsniper=SomaticSniper, _utils=utils):
     # Update class attributes
     _somaticsniper._initialize_args(args=run_args)
 
-    annotated_vcfs = tpe_submit_commands(run_args)
+    annotated_vcfs, exceptions = tpe_submit_commands(run_args)
+    if exceptions:
+        for e in exceptions:
+            logger.error(e)
+        raise ValueError("Exceptions raised during processing.")
 
     merged_output = "multi_somaticsniper_merged.vcf"
     with open(merged_output, 'w') as out_fh:

@@ -14,9 +14,10 @@ DI = SimpleNamespace(tempfile=tempfile)
 class SamtoolsView:
     """Create tempfile from view of BAM file."""
 
-    COMMAND_STR = "samtools view -b {bam_path} {region}"
+    COMMAND_STR = "{samtools} view -b {bam_path} {region}"
 
-    def __init__(self, bam_file: str, region: str, _utils=utils, _di=DI):
+    def __init__(self, samtools: str, bam_file: str, region: str, _utils=utils, _di=DI):
+        self.samtools = samtools
         self.bam_file = bam_file
         self.region = region
 
@@ -33,7 +34,9 @@ class SamtoolsView:
         self.temp_view_fh.close()
 
     def write_view(self):
-        cmd = self.COMMAND_STR.format(bam_path=self.bam_file, region=self.region)
+        cmd = self.COMMAND_STR.format(
+            samtools=self.samtools, bam_path=self.bam_file, region=self.region
+        )
         popen_return = self._utils.run_subprocess_command(cmd, stdout=self.temp_view_fh)
         logger.info(cmd)
         logger.debug(popen_return.stdout)
