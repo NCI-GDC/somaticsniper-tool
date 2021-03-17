@@ -4,7 +4,7 @@ import logging
 from subprocess import PIPE
 from textwrap import dedent
 from types import SimpleNamespace
-from typing import List
+from typing import List, NamedTuple
 
 from somaticsniper_tool import utils
 
@@ -64,19 +64,20 @@ class SomaticSniper:
             nhap=self.nhap,
             pd=self.pd,
             out_format=self.out_format,
-            extra_args=','.join(self.flags),
+            extra_args=' '.join(self.flags),
             reference_path=self.reference_path,
             tumor_bam=tumor_bam,
             normal_bam=normal_bam,
             output_file=self.output_file,
         )
         popen_return = _utils.run_subprocess_command(cmd, stdout=PIPE, stderr=PIPE)
+        logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
         return self.output_file
 
     @classmethod
-    def _initialize_args(cls, args: SimpleNamespace = None, **kwargs):
+    def _initialize_args(cls, args: NamedTuple = None, **kwargs):
         """Set class props from kwargs."""
         attrs = (
             'somaticsniper_bin',
@@ -90,9 +91,8 @@ class SomaticSniper:
             'flags',
             'reference_path',
         )
-        args_dict = vars(args) if args else {}
+        args_dict = args._asdict() if args else {}
         args_dict.update(kwargs)
-
         for attr in attrs:
             val = args_dict.get(attr, None)
             setattr(cls, attr, val)

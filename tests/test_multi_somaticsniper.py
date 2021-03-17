@@ -64,6 +64,7 @@ class Test_tpe_submit_commands(ThisTestCase):
     def setUp(self):
         super().setUp()
         self.args = dict(
+            samtools="samtools",
             normal_bam="/foo/bar/normal.bam",
             tumor_bam="/foo/bar/tumor.bam",
             snpfilter="snp_filter.pl",
@@ -97,6 +98,7 @@ class Test_tpe_submit_commands(ThisTestCase):
                 mock.call(
                     mock_fn,
                     region,
+                    samtools=self.run_args.samtools,
                     normal_bam=self.run_args.normal_bam,
                     tumor_bam=self.run_args.tumor_bam,
                     snpfilter=self.run_args.snpfilter,
@@ -113,6 +115,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         super().setUp()
 
         self.args = dict(
+            samtools="samtools",
             normal_bam="/foo/bar/normal.bam",
             tumor_bam="/foo/bar/tumor.bam",
             snpfilter="snp_filter.pl",
@@ -145,7 +148,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
             _snpfilter=self.mocks.SNPFILTER,
         )
 
-        self.mocks.SOMATICSNIPER.assert_called_once_with("chr1:2-3")
+        self.mocks.SOMATICSNIPER.assert_called_once_with("chr1-2-3")
 
     def test_samtools_views_called_with_expected_bams(self):
 
@@ -153,7 +156,8 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         self.mocks.SOMATICSNIPER.return_value = mock_somatic_sniper
 
         region = "chr1:2-3"
-        self.mocks.UTILS.get_region_from_name.return_value = region
+        basename = "chr1-2-3"
+        self.mocks.UTILS.get_region_from_name.return_value = region, basename
 
         found = MOD.multithread_somaticsniper(
             self.mpileup,
@@ -166,8 +170,8 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
             _utils=self.mocks.UTILS,
         )
         expected_calls = [
-            mock.call(self.args["normal_bam"], region),
-            mock.call(self.args["tumor_bam"], region),
+            mock.call(self.args["samtools"], self.args["normal_bam"], region),
+            mock.call(self.args["samtools"], self.args["tumor_bam"], region),
         ]
         self.mocks.SAMTOOLS.assert_has_calls(expected_calls, any_order=True)
 
@@ -246,14 +250,15 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         mock_high_confidence.run.assert_called_once_with()
 
     def test_annotate_context_called_with_expected_args(self):
-        region = "foobar"
-        self.mocks.UTILS.get_region_from_name.return_value = region
+        region = "foo:bar"
+        basename = "foo-bar"
+        self.mocks.UTILS.get_region_from_name.return_value = region, basename
 
         out_vcf = "somatic_sniper.vcf"
         snpfilter_out = "{}.SNPfilter".format(out_vcf)
         high_confidence_out = "{}.hc".format(snpfilter_out)
 
-        annotated_file = "{}.annotated.vcf".format(region)
+        annotated_file = "{}.annotated.vcf".format(basename)
 
         self.mocks.SOMATICSNIPER.return_value.run.return_value = out_vcf
 
@@ -270,14 +275,15 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         self.mocks.ANNOTATE.assert_called_once_with(annotated_file)
 
     def test_annotate_instance_called_with_expected_args(self):
-        region = "foobar"
-        self.mocks.UTILS.get_region_from_name.return_value = region
+        region = "foo:bar"
+        basename = "foo-bar"
+        self.mocks.UTILS.get_region_from_name.return_value = region, basename
 
         out_vcf = "somatic_sniper.vcf"
         snpfilter_out = "{}.SNPfilter".format(out_vcf)
         high_confidence_out = "{}.hc".format(snpfilter_out)
 
-        annotated_file = "{}.annotated.vcf".format(region)
+        annotated_file = "{}.annotated.vcf".format(basename)
         self.mocks.SOMATICSNIPER.return_value.run.return_value = out_vcf
 
         mock_annotate = mock.MagicMock(spec_set=MOD.Annotate)

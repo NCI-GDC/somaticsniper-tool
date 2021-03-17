@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import unittest
+from collections import namedtuple
 from types import SimpleNamespace
+from typing import NamedTuple
 from unittest import mock
 
 import somaticsniper_tool.somatic_sniper as MOD
@@ -49,8 +51,8 @@ class Test_SomaticSniper(ThisTestCase):
                 self.assertEqual(getattr(self.CLASS_OBJ, k), v)
 
     def test_setting_class_attributes_from_namespace(self):
-
-        input_namespace = SimpleNamespace(**self.input_args)
+        run_args = namedtuple("RunArgs", list(self.input_args.keys()))
+        input_namespace = run_args(**self.input_args)
         for k in self.input_args.keys():
             with self.subTest(k=k):
                 self.assertEqual(getattr(self.CLASS_OBJ, k), None)
@@ -62,8 +64,8 @@ class Test_SomaticSniper(ThisTestCase):
                 self.assertEqual(getattr(self.CLASS_OBJ, k), v)
 
     def test_setting_class_attributes_from_namespace_and_kwarg(self):
-
-        input_namespace = SimpleNamespace(**self.input_args)
+        run_args = namedtuple("RunArgs", list(self.input_args.keys()))
+        input_namespace = run_args(**self.input_args)
         for k in self.input_args.keys():
             with self.subTest(k=k):
                 self.assertEqual(getattr(self.CLASS_OBJ, k), None)
@@ -89,7 +91,7 @@ class Test_SomaticSniper(ThisTestCase):
         output = "output"
         obj = self.CLASS_OBJ(output)
         args = self.input_args.copy()
-        args['extra_args'] = ",".join(args.pop('flags'))
+        args['extra_args'] = " ".join(args.pop('flags'))
         normal_bam = "normal.bam"
         tumor_bam = "tumor.bam"
         expected_cmd = self.CLASS_OBJ.COMMAND.format(

@@ -22,11 +22,12 @@ def get_region_from_name(file_path: str, _di=DI) -> str:
         file_path (str): Path to mpileup file
     Returns:
         region (str): Samtools-compatible region
+        base (str): file basename
     """
     basename = _di.os.path.basename(file_path)
     base, _ = _di.os.path.splitext(basename)
     region = base.replace("-", ":", 1)
-    return region
+    return region, base
 
 
 def run_subprocess_command(
@@ -51,6 +52,10 @@ def run_subprocess_command(
     except subprocess.TimeoutExpired:
         p.kill()
         stdout, stderr = p.communicate()
+        raise ValueError(stderr.decode())
+
+    if p.returncode != 0:
+        raise ValueError(stderr.decode())
 
     try:
         stdout = stdout.decode()

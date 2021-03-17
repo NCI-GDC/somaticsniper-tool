@@ -22,7 +22,7 @@ class Test_SamtoolsView(ThisTestCase):
 
     def setUp(self):
         super().setUp()
-
+        self.samtools = "samtools"
         self.bam_file = "/path/to/file.bam"
         self.region = "chr1:1-20"
 
@@ -33,7 +33,11 @@ class Test_SamtoolsView(ThisTestCase):
 
     def test_tempfile_opened_on_init(self):
         found = self.CLASS_OBJ(
-            self.bam_file, self.region, _utils=self.mocks.utils, _di=self.mocks
+            self.samtools,
+            self.bam_file,
+            self.region,
+            _utils=self.mocks.utils,
+            _di=self.mocks,
         )
 
         self.assertEqual(found.temp_view_name, self.temp_file_name)
@@ -42,7 +46,11 @@ class Test_SamtoolsView(ThisTestCase):
     def test_tempfile_name_returned_on_enter(self):
 
         with self.CLASS_OBJ(
-            self.bam_file, self.region, _utils=self.mocks.utils, _di=self.mocks
+            self.samtools,
+            self.bam_file,
+            self.region,
+            _utils=self.mocks.utils,
+            _di=self.mocks,
         ) as found:
             self.assertEqual(found, self.temp_file_name)
 
@@ -50,11 +58,15 @@ class Test_SamtoolsView(ThisTestCase):
 
     def test_samtools_command_called_on_enter(self):
         expected_cmd_str = self.CLASS_OBJ.COMMAND_STR.format(
-            bam_path=self.bam_file, region=self.region
+            samtools=self.samtools, bam_path=self.bam_file, region=self.region
         )
 
         with self.CLASS_OBJ(
-            self.bam_file, self.region, _utils=self.mocks.utils, _di=self.mocks
+            self.samtools,
+            self.bam_file,
+            self.region,
+            _utils=self.mocks.utils,
+            _di=self.mocks,
         ):
             self.mocks.utils.run_subprocess_command.assert_called_once_with(
                 expected_cmd_str, stdout=self.temp_file_mock,

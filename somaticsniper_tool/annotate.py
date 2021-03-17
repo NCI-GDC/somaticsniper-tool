@@ -42,7 +42,7 @@ class Annotate:
         with _di.open(raw_vcf, 'r') as vcf_fh:
             for line in vcf_fh:
                 if line.startswith("##reference"):
-                    self.output_fh.write()
+                    self.output_fh.write(line)
                     self.output_fh.write("{}\n".format(Filter.PASS.value))
                     self.output_fh.write("{}\n".format(Filter.REJECT.value))
                     self.output_fh.write("{}\n".format(Filter.LOH.value))

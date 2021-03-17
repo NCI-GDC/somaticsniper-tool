@@ -1,6 +1,12 @@
-FROM python:3.7-slim
-
+FROM quay.io/ncigdc/samtools:1.1 AS samtools
+FROM quay.io/ncigdc/python37 AS python
 MAINTAINER Charles Czysz <czysz@uchicago.edu>
+
+COPY --from=samtools / /
+COPY --from=python / /
+
+COPY ./dist/ /opt/
+WORKDIR /opt
 
 ARG VERSION="1.0.5.0"
 
@@ -8,8 +14,6 @@ ENV URL=https://github.com/genome/somatic-sniper/archive/v${VERSION}.tar.gz
 
 RUN apt-get update \
 	&& yes | apt-get install -y \
-		software-properties-common \
-	        build-essential \
 		gcc \
 		cmake \
 		make \
@@ -34,12 +38,11 @@ RUN wget $URL \
 
 ENV BINARY=somaticsniper_tool
 
-COPY dist/ /opt/
-
-WORKDIR /opt
-
 RUN make init-pip \
   && ln -s /opt/bin/${BINARY} /bin/${BINARY}
 
-ENTRYPOINT ["/bin/somaticsniper_tool"]
+ENV TINI_VERSION v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+ENTRYPOINT ["/tini", "--", "somaticsniper_tool"]
 CMD ["--help"]

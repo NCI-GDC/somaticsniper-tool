@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-
+import logging
 from textwrap import dedent
 
 from somaticsniper_tool import utils
+
+logger = logging.getLogger(__name__)
 
 
 class HighConfidence:
@@ -22,7 +24,10 @@ class HighConfidence:
         cmd = self.COMMAND.format(
             high_confidence=self.high_confidence, input_file=self.input_file
         )
-        _utils.run_subprocess_command(cmd)
+        popen_return = _utils.run_subprocess_command(cmd)
+        logger.info(cmd)
+        logger.debug(popen_return.stdout)
+        logger.debug(popen_return.stderr)
 
 
 # __END__
