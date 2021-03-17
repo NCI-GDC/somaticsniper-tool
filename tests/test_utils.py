@@ -29,7 +29,6 @@ class Test__get_region_from_name(ThisTestCase):
         self.assertEqual(found, expected)
 
 
-@unittest.skip("Skipping for testing purposes")
 class Test_run_subprocess_command(ThisTestCase):
     def setUp(self):
         super().setUp()
@@ -43,6 +42,8 @@ class Test_run_subprocess_command(ThisTestCase):
         stderr = stderr or b""
 
         mock_popen = mock.MagicMock(spec_set=MOD.subprocess.Popen)
+        mock_returncode = 0
+        type(mock_popen).returncode = mock.PropertyMock(return_value=mock_returncode)
         self.mocks.subprocess.Popen.return_value = mock_popen
         if do_raise:
             mock_popen.communicate.side_effect = [
@@ -74,7 +75,8 @@ class Test_run_subprocess_command(ThisTestCase):
         )
         cmd_str = "ls /foo/bar"
         mock_popen = self._setup_popen(cmd_str, do_raise=True)
-        MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        with self.assertRaises(ValueError):
+            MOD.run_subprocess_command(cmd_str, _di=self.mocks)
         mock_popen.communicate.assert_has_calls(expected_communicate_calls)
         mock_popen.kill.assert_called_once_with()
 
@@ -92,6 +94,8 @@ class Test_run_subprocess_command(ThisTestCase):
         cmd_str = "ls /foo/bar"
         expected = MOD.PopenReturn(stdout=None, stderr=None)
         mock_popen = mock.MagicMock(spec_set=MOD.subprocess.Popen)
+        mock_returncode = 0
+        type(mock_popen).returncode = mock.PropertyMock(return_value=mock_returncode)
         mock_popen.communicate.return_value = (None, None)
         self.mocks.subprocess.Popen.return_value = mock_popen
         found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
@@ -101,6 +105,8 @@ class Test_run_subprocess_command(ThisTestCase):
         cmd_str = "ls /foo/bar"
         expected = MOD.PopenReturn(stdout="foo", stderr="bar")
         mock_popen = mock.MagicMock(spec_set=MOD.subprocess.Popen)
+        mock_returncode = 0
+        type(mock_popen).returncode = mock.PropertyMock(return_value=mock_returncode)
         mock_popen.communicate.return_value = ("foo", "bar")
         self.mocks.subprocess.Popen.return_value = mock_popen
         found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
