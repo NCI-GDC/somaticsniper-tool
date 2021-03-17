@@ -35,6 +35,7 @@ class SamtoolsView:
     def write_view(self):
         cmd = self.COMMAND_STR.format(bam_path=self.bam_file, region=self.region)
         popen_return = self._utils.run_subprocess_command(cmd, stdout=self.temp_view_fh)
+        logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
         self.temp_view_fh.seek(0)

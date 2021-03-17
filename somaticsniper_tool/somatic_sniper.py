@@ -64,13 +64,14 @@ class SomaticSniper:
             nhap=self.nhap,
             pd=self.pd,
             out_format=self.out_format,
-            extra_args=','.join(self.flags),
+            extra_args=' '.join(self.flags),
             reference_path=self.reference_path,
             tumor_bam=tumor_bam,
             normal_bam=normal_bam,
             output_file=self.output_file,
         )
         popen_return = _utils.run_subprocess_command(cmd, stdout=PIPE, stderr=PIPE)
+        logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
         return self.output_file
@@ -92,7 +93,6 @@ class SomaticSniper:
         )
         args_dict = args._asdict() if args else {}
         args_dict.update(kwargs)
-
         for attr in attrs:
             val = args_dict.get(attr, None)
             setattr(cls, attr, val)

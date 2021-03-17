@@ -16,6 +16,7 @@ import sys
 import tempfile
 import threading
 from collections import namedtuple
+from logging.config import dictConfig
 from textwrap import dedent
 from types import SimpleNamespace
 from typing import Callable, List, Optional
@@ -28,9 +29,10 @@ from somaticsniper_tool.samtools import SamtoolsView
 from somaticsniper_tool.snp_filter import SnpFilter
 from somaticsniper_tool.somatic_sniper import SomaticSniper
 
+__version__ = __pypi_version__
+
 logger = logging.getLogger(__name__)
 
-__version__ = __pypi_version__
 
 DI = SimpleNamespace(futures=concurrent.futures, open=open, os=os,)
 
@@ -39,12 +41,16 @@ def setup_logger():
     """
     Sets up the logger.
     """
-    logger_format = "[%(levelname)s] [%(asctime)s] [%(name)s] - %(message)s"
-    logger.setLevel(level=logging.INFO)
-    handler = logging.StreamHandler(sys.stderr)
-    formatter = logging.Formatter(logger_format, datefmt="%Y%m%d %H:%M:%S")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    config = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'standard': {'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'},
+        },
+        'handlers': {'default': {'level': 'INFO', 'class': 'logging.StreamHandler',},},
+        'loggers': {'': {'handlers': ['default'], 'level': 'INFO', 'propagate': True}},
+    }
+    dictConfig(config)
     return logger
 
 
@@ -215,9 +221,9 @@ def multithread_somaticsniper(
         annotated_vcf_file (str): Path to annotated vcf
     """
 
-    region = _utils.get_region_from_name(mpileup)
+    region, basename = _utils.get_region_from_name(mpileup)
 
-    somatic_sniper = _somaticsniper(region)
+    somatic_sniper = _somaticsniper(basename)
     with _samtools(normal_bam, region) as normal_view, _samtools(
         tumor_bam, region
     ) as tumor_view:
@@ -233,7 +239,7 @@ def multithread_somaticsniper(
     high_confidence = _highconfidence(high_confidence, snp_filter_output)
     high_confidence.run()
 
-    annotated_vcf_file = "{}.annotated.vcf".format(region)
+    annotated_vcf_file = "{}.annotated.vcf".format(basename)
     with _annotate(annotated_vcf_file) as annotate:
         annotate(somatic_sniper_vcf, high_confidence_output)
 
@@ -268,6 +274,7 @@ def tpe_submit_commands(
                 annotated_vcfs.append(result)
             except Exception as e:
                 logger.exception(e)
+    return annotated_vcfs
 
 
 def run(run_args, _somaticsniper=SomaticSniper, _utils=utils):

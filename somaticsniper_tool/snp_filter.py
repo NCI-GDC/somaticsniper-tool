@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-
+import logging
 from textwrap import dedent
 
 from somaticsniper_tool import utils
+
+logger = logging.getLogger(__name__)
 
 
 class SnpFilter:
@@ -25,7 +27,10 @@ class SnpFilter:
             vcf_file=self.vcf_file,
             indel_file=self.indel_mpileup_file,
         )
-        _utils.run_subprocess_command(cmd)
+        popen_return = _utils.run_subprocess_command(cmd)
+        logger.info(cmd)
+        logger.debug(popen_return.stdout)
+        logger.debug(popen_return.stderr)
 
 
 # __END__
