@@ -30,6 +30,7 @@ class Test_SomaticSniper(ThisTestCase):
             'out_format': "baz",
             'flags': ["foo", "bar"],
             'reference_path': "/path/to/ref",
+            'timeout': 3600,
         }
         self.mocks = SimpleNamespace(UTILS=mock.MagicMock(spec_set=MOD.utils))
 
@@ -104,7 +105,7 @@ class Test_SomaticSniper(ThisTestCase):
         self.mocks.UTILS.run_subprocess_command.return_value = subprocess_return
         output_file = obj.run(normal_bam, tumor_bam, _utils=self.mocks.UTILS)
         self.mocks.UTILS.run_subprocess_command.assert_called_once_with(
-            expected_cmd, stdout=MOD.PIPE, stderr=MOD.PIPE
+            expected_cmd, self.input_args['timeout'], stdout=MOD.PIPE, stderr=MOD.PIPE
         )
 
 

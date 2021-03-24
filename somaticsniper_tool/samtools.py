@@ -16,7 +16,10 @@ class SamtoolsView:
 
     COMMAND_STR = "{samtools} view -b {bam_path} {region}"
 
-    def __init__(self, samtools: str, bam_file: str, region: str, _utils=utils, _di=DI):
+    def __init__(
+        self, timeout, samtools: str, bam_file: str, region: str, _utils=utils, _di=DI
+    ):
+        self.timeout = timeout
         self.samtools = samtools
         self.bam_file = bam_file
         self.region = region
@@ -37,7 +40,9 @@ class SamtoolsView:
         cmd = self.COMMAND_STR.format(
             samtools=self.samtools, bam_path=self.bam_file, region=self.region
         )
-        popen_return = self._utils.run_subprocess_command(cmd, stdout=self.temp_view_fh)
+        popen_return = self._utils.run_subprocess_command(
+            cmd, self.timeout, stdout=self.temp_view_fh
+        )
         logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
