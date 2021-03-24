@@ -71,6 +71,7 @@ class Test_tpe_submit_commands(ThisTestCase):
             highconfidence="highconfidence.pl",
             mpileup=["chr1-2-3.mpileup", "chr4-5-6.mpileup"],
             thread_count=42,
+            timeout=3600,
         )
         self.run_args = SimpleNamespace(**self.args)
 
@@ -98,6 +99,7 @@ class Test_tpe_submit_commands(ThisTestCase):
                 mock.call(
                     mock_fn,
                     region,
+                    timeout=self.run_args.timeout,
                     samtools=self.run_args.samtools,
                     normal_bam=self.run_args.normal_bam,
                     tumor_bam=self.run_args.tumor_bam,
@@ -115,6 +117,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         super().setUp()
 
         self.args = dict(
+            timeout=3600,
             samtools="samtools",
             normal_bam="/foo/bar/normal.bam",
             tumor_bam="/foo/bar/tumor.bam",
@@ -170,10 +173,20 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
             _utils=self.mocks.UTILS,
         )
         expected_calls = [
-            mock.call(self.args["samtools"], self.args["normal_bam"], region),
-            mock.call(self.args["samtools"], self.args["tumor_bam"], region),
+            mock.call(
+                self.args["timeout"],
+                self.args["samtools"],
+                self.args["normal_bam"],
+                region,
+            ),
+            mock.call(
+                self.args["timeout"],
+                self.args["samtools"],
+                self.args["tumor_bam"],
+                region,
+            ),
         ]
-        self.mocks.SAMTOOLS.assert_has_calls(expected_calls, any_order=True)
+        self.mocks.SAMTOOLS.assert_has_calls(expected_calls, self.args["timeout"])
 
     def test_somaticsniper_run_called_with_samtools_views(self):
         normal_bam_path = "normal.bam"
@@ -222,7 +235,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
         )
 
         self.mocks.SNPFILTER.assert_called_once_with(
-            self.args["snpfilter"], out_vcf, self.mpileup
+            self.args["timeout"], self.args["snpfilter"], out_vcf, self.mpileup
         )
         mock_snpfilter.run.assert_called_once_with()
 
@@ -245,7 +258,7 @@ class Test_Multithread_Somaticsniper(ThisTestCase):
             _snpfilter=self.mocks.SNPFILTER,
         )
         self.mocks.HIGHCONFIDENCE.assert_called_once_with(
-            self.args["high_confidence"], snpfilter_out
+            self.args["timeout"], self.args["high_confidence"], snpfilter_out
         )
         mock_high_confidence.run.assert_called_once_with()
 

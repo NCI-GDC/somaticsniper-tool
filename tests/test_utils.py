@@ -57,15 +57,17 @@ class Test_run_subprocess_command(ThisTestCase):
     def test_popen_command_not_split_on_shell_is_True(self):
         cmd_str = "ls /foo/bar"
         expected_cmd = cmd_str
+        timeout = 3600
         mock_popen = self._setup_popen(cmd_str)
-        MOD.run_subprocess_command(cmd_str, shell=True, _di=self.mocks)
+        MOD.run_subprocess_command(cmd_str, timeout, shell=True, _di=self.mocks)
         self.mocks.subprocess.Popen.assert_called_once_with(expected_cmd, shell=True)
 
     def test_popen_command_split_on_shell_is_False_or_not_given(self):
         cmd_str = "ls /foo/bar"
         expected_cmd = MOD.shlex.split(cmd_str)
+        timeout = 3600
         mock_popen = self._setup_popen(cmd_str)
-        MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        MOD.run_subprocess_command(cmd_str, timeout, _di=self.mocks)
         self.mocks.subprocess.Popen.assert_called_once_with(expected_cmd)
 
     def test_popen_killed_on_timeout_expired(self):
@@ -75,8 +77,9 @@ class Test_run_subprocess_command(ThisTestCase):
         )
         cmd_str = "ls /foo/bar"
         mock_popen = self._setup_popen(cmd_str, do_raise=True)
+        timeout = 3600
         with self.assertRaises(ValueError):
-            MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+            MOD.run_subprocess_command(cmd_str, timeout, _di=self.mocks)
         mock_popen.communicate.assert_has_calls(expected_communicate_calls)
         mock_popen.kill.assert_called_once_with()
 
@@ -84,8 +87,9 @@ class Test_run_subprocess_command(ThisTestCase):
         cmd_str = "ls /foo/bar"
         stdout = b"stdout"
         stderr = b"stderr"
+        timeout = 3600
         mock_popen = self._setup_popen(cmd_str, stdout=stdout, stderr=stderr)
-        found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        found = MOD.run_subprocess_command(cmd_str, timeout, _di=self.mocks)
 
         self.assertEqual(found.stdout, stdout.decode())
         self.assertEqual(found.stderr, stderr.decode())
@@ -97,8 +101,9 @@ class Test_run_subprocess_command(ThisTestCase):
         mock_returncode = 0
         type(mock_popen).returncode = mock.PropertyMock(return_value=mock_returncode)
         mock_popen.communicate.return_value = (None, None)
+        timeout = 3600
         self.mocks.subprocess.Popen.return_value = mock_popen
-        found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        found = MOD.run_subprocess_command(cmd_str, timeout, _di=self.mocks)
         self.assertEqual(expected, found)
 
     def test_returns_str_when_communicate_returns_str(self):
@@ -108,8 +113,9 @@ class Test_run_subprocess_command(ThisTestCase):
         mock_returncode = 0
         type(mock_popen).returncode = mock.PropertyMock(return_value=mock_returncode)
         mock_popen.communicate.return_value = ("foo", "bar")
+        timeout = 3600
         self.mocks.subprocess.Popen.return_value = mock_popen
-        found = MOD.run_subprocess_command(cmd_str, _di=self.mocks)
+        found = MOD.run_subprocess_command(cmd_str, timeout, _di=self.mocks)
         self.assertEqual(expected, found)
 
 

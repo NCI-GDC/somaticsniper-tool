@@ -16,10 +16,11 @@ class SnpFilter:
         """
     ).strip()
 
-    def __init__(self, snpfilter: str, vcf_file: str, indel_mpileup_file: str):
+    def __init__(self, timeout, snpfilter: str, vcf_file: str, indel_mpileup_file: str):
         self.snpfilter = snpfilter
         self.vcf_file = vcf_file
         self.indel_mpileup_file = indel_mpileup_file
+        self.timeout = timeout
 
     def run(self, _utils=utils):
         cmd = self.COMMAND.format(
@@ -27,7 +28,7 @@ class SnpFilter:
             vcf_file=self.vcf_file,
             indel_file=self.indel_mpileup_file,
         )
-        popen_return = _utils.run_subprocess_command(cmd)
+        popen_return = _utils.run_subprocess_command(cmd, self.timeout)
         logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)

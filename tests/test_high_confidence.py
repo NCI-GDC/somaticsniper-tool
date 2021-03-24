@@ -18,16 +18,17 @@ class TestHighConfidene(ThisTestCase):
 
     def setUp(self):
         super().setUp()
-
+        self.timeout = 3600
         self.high_confidence = "/path/to/highconfidence.pl"
         self.input_file = "/path/to/vcf.SNPfilter"
 
     def test_init(self):
         expected = {
+            "timeout": self.timeout,
             "high_confidence": self.high_confidence,
             "input_file": self.input_file,
         }
-        found = self.CLASS_OBJ(self.high_confidence, self.input_file)
+        found = self.CLASS_OBJ(self.timeout, self.high_confidence, self.input_file)
         for k, v in expected.items():
             with self.subTest(k=k):
                 self.assertEqual(getattr(found, k), v)
@@ -36,9 +37,13 @@ class TestHighConfidene(ThisTestCase):
         expected = self.CLASS_OBJ.COMMAND.format(
             high_confidence=self.high_confidence, input_file=self.input_file
         )
-        high_confidence = self.CLASS_OBJ(self.high_confidence, self.input_file)
+        high_confidence = self.CLASS_OBJ(
+            self.timeout, self.high_confidence, self.input_file
+        )
         high_confidence.run(_utils=self.mocks.utils)
-        self.mocks.utils.run_subprocess_command.assert_called_once_with(expected)
+        self.mocks.utils.run_subprocess_command.assert_called_once_with(
+            expected, self.timeout
+        )
 
 
 # __END__

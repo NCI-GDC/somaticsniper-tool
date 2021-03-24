@@ -30,9 +30,7 @@ def get_region_from_name(file_path: str, _di=DI) -> str:
     return region, base
 
 
-def run_subprocess_command(
-    cmd: str, timeout: int = 3600, _di=DI, **kwargs
-) -> PopenReturn:
+def run_subprocess_command(cmd: str, timeout: int, _di=DI, **kwargs) -> PopenReturn:
     """Run command via Popen.
     Accepts:
         cmd (str): Command-string to run

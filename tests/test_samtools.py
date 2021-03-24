@@ -22,6 +22,7 @@ class Test_SamtoolsView(ThisTestCase):
 
     def setUp(self):
         super().setUp()
+        self.timeout = 3600
         self.samtools = "samtools"
         self.bam_file = "/path/to/file.bam"
         self.region = "chr1:1-20"
@@ -33,6 +34,7 @@ class Test_SamtoolsView(ThisTestCase):
 
     def test_tempfile_opened_on_init(self):
         found = self.CLASS_OBJ(
+            self.timeout,
             self.samtools,
             self.bam_file,
             self.region,
@@ -46,6 +48,7 @@ class Test_SamtoolsView(ThisTestCase):
     def test_tempfile_name_returned_on_enter(self):
 
         with self.CLASS_OBJ(
+            self.timeout,
             self.samtools,
             self.bam_file,
             self.region,
@@ -62,6 +65,7 @@ class Test_SamtoolsView(ThisTestCase):
         )
 
         with self.CLASS_OBJ(
+            self.timeout,
             self.samtools,
             self.bam_file,
             self.region,
@@ -69,7 +73,7 @@ class Test_SamtoolsView(ThisTestCase):
             _di=self.mocks,
         ):
             self.mocks.utils.run_subprocess_command.assert_called_once_with(
-                expected_cmd_str, stdout=self.temp_file_mock,
+                expected_cmd_str, self.timeout, stdout=self.temp_file_mock
             )
 
 

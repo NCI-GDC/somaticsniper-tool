@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections import namedtuple
 from logging.config import dictConfig
 from textwrap import dedent
@@ -183,6 +184,13 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", action='version', version=__version__,
     )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        required=False,
+        help="Max time for command to run, in seconds.",
+    )
 
     return parser
 
@@ -205,6 +213,7 @@ def process_argv(argv: Optional[List] = None) -> namedtuple:
 
 def multithread_somaticsniper(
     mpileup: str,
+    timeout: int = None,
     samtools: str = None,
     normal_bam: str = None,
     tumor_bam: str = None,
@@ -228,19 +237,19 @@ def multithread_somaticsniper(
     region, basename = _utils.get_region_from_name(mpileup)
 
     somatic_sniper = _somaticsniper(basename)
-    with _samtools(samtools, normal_bam, region) as normal_view, _samtools(
-        samtools, tumor_bam, region
+    with _samtools(timeout, samtools, normal_bam, region) as normal_view, _samtools(
+        timeout, samtools, tumor_bam, region
     ) as tumor_view:
         somatic_sniper_vcf = somatic_sniper.run(
             normal_bam=normal_view, tumor_bam=tumor_view
         )
 
     snp_filter_output = "{}.SNPfilter".format(somatic_sniper_vcf)
-    snp_filter = _snpfilter(snpfilter, somatic_sniper_vcf, mpileup)
+    snp_filter = _snpfilter(timeout, snpfilter, somatic_sniper_vcf, mpileup)
     snp_filter.run()
 
     high_confidence_output = "{}.hc".format(snp_filter_output)
-    high_confidence = _highconfidence(high_confidence, snp_filter_output)
+    high_confidence = _highconfidence(timeout, high_confidence, snp_filter_output)
     high_confidence.run()
 
     annotated_vcf_file = "{}.annotated.vcf".format(basename)
@@ -265,6 +274,7 @@ def tpe_submit_commands(
             executor.submit(
                 fn,
                 region_mpileup,
+                timeout=run_args.timeout,
                 samtools=run_args.samtools,
                 normal_bam=run_args.normal_bam,
                 tumor_bam=run_args.tumor_bam,
@@ -307,13 +317,13 @@ def main(argv=None) -> int:
 
     argv = argv or sys.argv
     args = process_argv(argv)
-
+    start = time.time()
     try:
         run(args)
+        logger.info("Finished, took %s seconds.", round(time.time() - start, 2))
     except Exception as e:
         logger.exception(e)
         exit_code = 1
-
     return exit_code
 
 

@@ -43,6 +43,7 @@ class SomaticSniper:
     out_format: str = None
     flags: List[str] = None
     reference_path: str = None
+    timeout: int = None
 
     def __init__(self, output: str):
         self.output_file = "{output}.vcf".format(output=output)
@@ -70,7 +71,9 @@ class SomaticSniper:
             normal_bam=normal_bam,
             output_file=self.output_file,
         )
-        popen_return = _utils.run_subprocess_command(cmd, stdout=PIPE, stderr=PIPE)
+        popen_return = _utils.run_subprocess_command(
+            cmd, self.timeout, stdout=PIPE, stderr=PIPE
+        )
         logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
@@ -90,6 +93,7 @@ class SomaticSniper:
             'out_format',
             'flags',
             'reference_path',
+            'timeout',
         )
         args_dict = args._asdict() if args else {}
         args_dict.update(kwargs)

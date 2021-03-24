@@ -16,7 +16,8 @@ class HighConfidence:
         """
     ).strip()
 
-    def __init__(self, high_confidence: str, input_file: str):
+    def __init__(self, timeout, high_confidence: str, input_file: str):
+        self.timeout = timeout
         self.high_confidence = high_confidence
         self.input_file = input_file
 
@@ -24,7 +25,7 @@ class HighConfidence:
         cmd = self.COMMAND.format(
             high_confidence=self.high_confidence, input_file=self.input_file
         )
-        popen_return = _utils.run_subprocess_command(cmd)
+        popen_return = _utils.run_subprocess_command(cmd, self.timeout)
         logger.info(cmd)
         logger.debug(popen_return.stdout)
         logger.debug(popen_return.stderr)
