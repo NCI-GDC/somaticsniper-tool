@@ -25,10 +25,8 @@ class HighConfidence:
         cmd = self.COMMAND.format(
             high_confidence=self.high_confidence, input_file=self.input_file
         )
-        popen_return = _utils.run_subprocess_command(cmd, self.timeout)
+        _utils.run_subprocess_command(cmd, self.timeout)
         logger.info(cmd)
-        logger.debug(popen_return.stdout)
-        logger.debug(popen_return.stderr)
 
 
 # __END__
