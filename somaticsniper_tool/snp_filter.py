@@ -28,10 +28,8 @@ class SnpFilter:
             vcf_file=self.vcf_file,
             indel_file=self.indel_mpileup_file,
         )
-        popen_return = _utils.run_subprocess_command(cmd, self.timeout)
+        _utils.run_subprocess_command(cmd, self.timeout)
         logger.info(cmd)
-        logger.debug(popen_return.stdout)
-        logger.debug(popen_return.stderr)
 
 
 # __END__

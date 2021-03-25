@@ -51,7 +51,7 @@ class Annotate:
                 elif line in high_confident_lines:
                     entries = line.split("\t")
                     entries[6] = "LOH"
-                    self.output_fh.output_fh.write('\t'.join(entries))
+                    self.output_fh.write('\t'.join(entries))
                 else:
                     entries = line.split("\t")
                     entries[6] = "REJECT"
